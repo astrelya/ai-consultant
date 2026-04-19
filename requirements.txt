@@ -1,0 +1,11 @@
+langchain
+langgraph
+langchain-google-genai
+python-dotenv
+jira
+mcp
+langchain-mcp-adapters
+requests
+pytest
+GitPython
+

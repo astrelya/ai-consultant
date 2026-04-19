@@ -1,0 +1,36 @@
+# Environments
+.env
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Project Specific
+/workspaces/
+/tests/
+/src/
+scratch/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+
+# Distribution / Packaging
+dist/
+build/
+*.egg-info/

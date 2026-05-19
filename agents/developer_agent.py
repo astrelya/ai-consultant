@@ -11,7 +11,7 @@ from tools.mcp_loader import load_dev_tools
 class RemoteDeveloperAgent:
     def __init__(self):
         # Initialize the Gemini Model
-        model_name = os.environ.get("GEMINI_MODEL", "gemini-3.1-pro-preview")
+        model_name = os.environ.get("CODING_MODEL", "gemini-3.1-pro-preview")
         self.llm = ChatGoogleGenerativeAI(model=model_name, temperature=0)
 
     async def implement_feature(self, story_details: dict, workspace_path: str) -> dict:

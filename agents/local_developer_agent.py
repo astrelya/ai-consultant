@@ -39,7 +39,7 @@ from tools.context7_mcp import load_context7_mcp_tools
 
 class LocalDeveloperAgent:
     def __init__(self):
-        model_name = os.environ.get("GEMINI_MODEL", "gemini-3.1-pro-preview")
+        model_name = os.environ.get("CODING_MODEL", "gemini-3.1-pro-preview")
         self.llm = ChatGoogleGenerativeAI(model=model_name, temperature=0)
 
     async def implement_feature(self, story_details: dict, workspace_path: str) -> dict:

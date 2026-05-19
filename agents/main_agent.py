@@ -13,7 +13,7 @@ from agents.developer_agent import RemoteDeveloperAgent
 from agents.tester_agent import TesterAgent
 from agents.environment_agent import EnvironmentAgent
 from tools.ticket_manager import TicketManager
-from tools.context7_mcp import load_context7_mcp_tools
+from tools.mcp_loader import MCPManager
 
 import os
 
@@ -30,7 +30,7 @@ class SupervisorAgent:
         self.chat_history = []  # Maintain conversation state
         
         # Initialize Gemini for true LLM-based routing
-        model_name = os.environ.get("GEMINI_MODEL", "gemini-3.1-pro-preview")
+        model_name = os.environ.get("TICKET_MODEL", "gemini-2.5-flash")
         self.llm = ChatGoogleGenerativeAI(model=model_name, temperature=0)
 
     async def run(self, issue_identifier: str):
@@ -83,14 +83,15 @@ class SupervisorAgent:
         Uses an LLM and LangGraph ReAct agent to route user intents interactively.
         """
         # Define the tools available to the Supervisor LLM
-        async def fetch_todo_tickets() -> str:
-            """Fetches all GitHub projects/tickets currently in the TODO state."""
-            tickets = await self.ticket_manager.get_todo_tickets()
+        async def fetch_tickets(status_filter: str = None) -> str:
+            """Fetches active tickets/projects. You can optionally provide a status_filter like 'TODO', 'In Progress', or 'Done' to only get tickets in that status."""
+            tickets = await self.ticket_manager.get_todo_tickets(status_filter)
             if not tickets:
-                return "There are no tickets in the TODO state right now."
-            response = "TODO Tickets:\n"
+                return f"There are no tickets matching the criteria right now."
+            response = f"Tickets (Filter: {status_filter or 'None'}):\n"
             for t in tickets:
-                response += f"- {t['id']}: {t['title']}\n"
+                status_str = f" [{t.get('status', 'Open')}]"
+                response += f"- {t['id']}: {t['title']}{status_str}\n"
             return response
 
         async def implement_ticket(ticket_id: str) -> str:
@@ -112,23 +113,24 @@ class SupervisorAgent:
             return f"Developer mode successfully set to {self.mode}."
 
         # Load interactive tools + Documentation tools for the chat session
-        async with load_context7_mcp_tools() as doc_tools:
-            supervisor_tools = [
-                StructuredTool.from_function(coroutine=fetch_todo_tickets, name="ListTodoTickets", description="Lists available TODO tickets/projects."),
-                StructuredTool.from_function(coroutine=implement_ticket, name="ImplementTicket", description="Develops and implements a specific ticket ID."),
-                StructuredTool.from_function(coroutine=set_mode, name="SetDeveloperMode", description="Changes implementation strategy between 'local' and 'remote'.")
-            ] + doc_tools
-            
-            # Create an intelligent routing agent bound with the tools
-            router_agent = create_react_agent(self.llm, supervisor_tools)
-            
-            # Prepare messages including history
-            messages = [("system", "You are the orchestrating supervisor. You have access to project management, code implementation, and technical documentation tools (Context7). If a user asks a technical question about a library like Javelit, use Context7 to find the answer.")]
-            messages.extend(self.chat_history)
-            messages.append(("user", user_command))
-            
-            # Execute the routing agent
-            result = await router_agent.ainvoke({"messages": messages})
+        manager = await MCPManager.get_instance()
+        
+        supervisor_tools = [
+            StructuredTool.from_function(coroutine=fetch_tickets, name="FetchTickets", description="Lists available tickets. Can optionally filter by status (e.g. 'TODO')."),
+            StructuredTool.from_function(coroutine=implement_ticket, name="ImplementTicket", description="Develops and implements a specific ticket ID."),
+            StructuredTool.from_function(coroutine=set_mode, name="SetDeveloperMode", description="Changes implementation strategy between 'local' and 'remote'.")
+        ] + manager.doc_tools
+        
+        # Create an intelligent routing agent bound with the tools
+        router_agent = create_react_agent(self.llm, supervisor_tools)
+        
+        # Prepare messages including history
+        messages = [("system", "You are the orchestrating supervisor. You have access to project management, code implementation, and technical documentation tools (Context7). If a user asks a technical question about a library like Javelit, use Context7 to find the answer.")]
+        messages.extend(self.chat_history)
+        messages.append(("user", user_command))
+        
+        # Execute the routing agent
+        result = await router_agent.ainvoke({"messages": messages})
         
         # Parse output
         content_raw = result["messages"][-1].content

@@ -24,15 +24,20 @@ def local_list_files(directory: str) -> str:
 def local_git_commit_and_push(repo_path: str, branch_name: str, message: str) -> str:
     """Commits all changes and pushes to the specified branch."""
     repo = Repo(repo_path)
-    # Create branch
-    new_branch = repo.create_head(branch_name)
-    new_branch.checkout()
+    # Check if branch exists, otherwise create it
+    if branch_name in repo.heads:
+        branch = repo.heads[branch_name]
+    else:
+        branch = repo.create_head(branch_name)
+    branch.checkout()
     # Add and commit
     repo.git.add(A=True)
-    repo.index.commit(message)
+    # Avoid committing if no changes exist
+    if repo.is_dirty():
+        repo.index.commit(message)
     # Push
     origin = repo.remote(name='origin')
-    origin.push(new_branch)
+    origin.push(branch)
     return f"Successfully pushed changes to branch {branch_name}"
 
 from tools.context7_mcp import load_context7_mcp_tools
@@ -81,3 +86,43 @@ ALWAYS use absolute paths for file operations. The base directory is {workspace_
             "branch": branch_name,
             "message": f"Local implementation finished: {content[:100]}..."
         }
+
+    async def implement_pr_recommendations(self, story_details: dict, branch_name: str, workspace_path: str) -> dict:
+        title = story_details.get('title')
+        description = story_details.get('description', '')
+        
+        print(f"  [LocalDeveloperAgent] Starting local PR recommendations flow for: {title}")
+        
+        system_prompt = f"""You are a Local Developer Agent.
+Your workspace is located at: {workspace_path}
+You are working on the EXISTING branch '{branch_name}' which is already checked out.
+You have access to local file tools AND Context7 Documentation tools.
+If you need technical documentation to solve the task, use the context7 tools.
+Your task:
+1. List/read the relevant files in the workspace.
+2. Modify the code to implement the requested PR recommendations: {description}.
+3. Commit all changes and push them directly to the existing branch '{branch_name}'.
+
+ALWAYS use absolute paths for file operations. The base directory is {workspace_path}.
+"""
+
+        local_tools = [local_read_file, local_write_file, local_list_files, local_git_commit_and_push]
+        
+        async with load_context7_mcp_tools() as doc_tools:
+            combined_tools = local_tools + doc_tools
+            agent_executor = create_react_agent(self.llm, combined_tools)
+            
+            result = await agent_executor.ainvoke({"messages": [("user", system_prompt)]})
+        
+        content_raw = result["messages"][-1].content
+        if isinstance(content_raw, list):
+            content = "".join([item.get("text", "") if isinstance(item, dict) else str(item) for item in content_raw])
+        else:
+            content = str(content_raw)
+            
+        return {
+            "status": "success",
+            "branch": branch_name,
+            "message": f"Local PR recommendations implementation finished: {content[:100]}..."
+        }
+

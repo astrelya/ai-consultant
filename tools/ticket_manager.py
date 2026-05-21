@@ -45,9 +45,12 @@ class TicketManager:
     async def _get_jira_ticket_details(self, issue_identifier: str) -> dict:
         print(f"  [TicketManager] Querying Jira MCP for issue {issue_identifier}...")
         
+        jira_url = os.environ.get("JIRA_URL", "https://astrelya.atlassian.net")
         system_prompt = f"""
         You are a helpful assistant with access to Jira MCP tools.
         Extract the details for the Jira issue using the issue key/identifier '{issue_identifier}'.
+        
+        CRITICAL: Use the cloudId associated with the JIRA_URL/site '{jira_url}' (which is '95778ac0-3f3b-46a0-95f5-e465d87b6a37'). Do not use any other cloudId.
         
         CRITICAL: When using the Jira MCP tool to fetch the issue, you MUST use the 'fields' parameter to limit the response to ONLY what is necessary (e.g., 'summary,description,status'). Otherwise, the payload is too large and takes too long to process.
         
@@ -148,11 +151,14 @@ class TicketManager:
         
         filter_instruction = f"The user has provided a status filter: '{status_filter}'. If it means 'todo' or 'to do', map it to `status = \"To Do\"`. If it means 'in progress', map to `status = \"In Progress\"`. If it is generic like 'open' or 'all', use `statusCategory != Done`." if status_filter else "DO NOT filter out 'In Progress' tickets."
         
+        jira_url = os.environ.get("JIRA_URL", "https://astrelya.atlassian.net")
         system_prompt = f"""
         You are a helpful assistant with access to Jira MCP tools.
         I want to find active Jira issues (tickets) in the project. This includes issues in ANY open state (e.g., "To Do", "In Progress", "In Review"). 
         
         {filter_instruction}
+        
+        CRITICAL: Use the cloudId associated with the JIRA_URL/site '{jira_url}' (which is '95778ac0-3f3b-46a0-95f5-e465d87b6a37'). Do not use any other cloudId.
         
         Use the appropriate Jira search/JQL tools provided by the MCP server to find these issues.
         IMPORTANT: Jira status names are case-sensitive and typically include spaces (e.g., "To Do", not "TODO").
@@ -216,3 +222,54 @@ class TicketManager:
                 {"id": "PROJ-123", "title": "Add User Authentication"},
                 {"id": "PROJ-105", "title": "Create User API endpoints"}
             ]
+
+    async def get_pr_details(self, owner: str, repo: str, pr_number: int) -> dict:
+        print(f"  [TicketManager] Querying GitHub MCP for PR #{pr_number} in {owner}/{repo}...")
+        
+        system_prompt = f"""
+        You are a helpful assistant with access to GitHub MCP tools.
+        Fetch details for Pull Request #{pr_number} in repository '{owner}/{repo}'.
+        
+        Specifically:
+        1. Retrieve the PR details (using pulls_get) to find the branch name (head.ref) from which the PR was opened.
+        2. Retrieve the PR review comments and issue comments (using pulls_list_review_comments, issues_list_comments, or similar) to see what has been recommended or requested.
+        
+        Return the result EXACTLY as a raw JSON string (no markdown blocks, just raw JSON) matching this schema:
+        {{
+            "branch_name": "name-of-the-pr-branch",
+            "recommendations": "A summary of the review comments and code changes requested."
+        }}
+        """
+        manager = await MCPManager.get_instance()
+        return await self._run_agent(manager.github_tools, system_prompt, f"{owner}/{repo}#pull-{pr_number}")
+
+    async def transition_ticket(self, ticket_id: str, to_status: str) -> bool:
+        if self.system == "github":
+            return False
+            
+        print(f"  [TicketManager] Transitioning Jira ticket {ticket_id} to status '{to_status}'...")
+        
+        jira_url = os.environ.get("JIRA_URL", "https://astrelya.atlassian.net")
+        system_prompt = f"""
+        You are a helpful assistant with access to Jira MCP tools.
+        Transition/move the Jira issue with key '{ticket_id}' to the status '{to_status}'.
+        
+        CRITICAL: Use the cloudId associated with the JIRA_URL/site '{jira_url}' (which is '95778ac0-3f3b-46a0-95f5-e465d87b6a37'). Do not use any other cloudId.
+        
+        Jira requires transitioning issues through specific workflow transitions. If you cannot directly set the status, fetch the available transitions for this issue first, then apply the one that matches '{to_status}' (e.g. "In Progress", "In Review", "Done").
+        If the issue is in 'To Do', you may need to transition it to 'In Progress' first, and then to 'In Review'. Make sure you complete the transitions step-by-step to reach '{to_status}'.
+        
+        Return the result EXACTLY as a JSON string matching this schema:
+        {{
+            "success": true,
+            "message": "Status updated successfully"
+        }}
+        """
+        manager = await MCPManager.get_instance()
+        try:
+            res = await self._run_agent(manager.jira_tools, system_prompt, f"transition-{ticket_id}")
+            return res.get("success", False)
+        except Exception as e:
+            print(f"  [TicketManager] Failed to transition ticket {ticket_id}: {e}")
+            return False
+

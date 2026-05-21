@@ -24,10 +24,11 @@ class RemoteDeveloperAgent:
         # Build the prompt
         system_prompt = f"""You are an elite Developer Subagent. 
 Your workspace path locally is {workspace_path}. 
+The target GitHub repository is: '{story_details.get('repo_full_name', 'unknown')}'.
 You have access to GitHub and Context7 Documentation via MCP tools.
 If you need documentation for libraries/frameworks, use the context7 tools.
 Your task:
-1. Create a branch named '{branch_name}'.
+1. Create a branch named '{branch_name}' in the repository '{story_details.get('repo_full_name', 'unknown')}'.
 2. Write/Push code related to solving: {title} ({description}).
 3. Create a pull request outlining what you did.
 """
@@ -51,11 +52,60 @@ Your task:
 
             print("  [DeveloperAgent] Execution Result:")
             print(content)
+            
+            # Extract PR URL from logs if it exists
+            import re
+            pr_url = None
+            for msg in reversed(result.get("messages", [])):
+                content_str = str(msg.content)
+                match = re.search(r"https://github\.com/[\w\-]+/[\w\-]+/pull/\d+", content_str)
+                if match:
+                    pr_url = match.group(0)
+                    break
         
         # After remote tools are executed, we return standard workflow output
         return {
             "status": "success",
             "branch": branch_name,
+            "pr_url": pr_url,
             "code_files": [f"{workspace_path}/src"], # simplified for now
             "message": "Used MCP to PR feature."
+        }
+
+    async def implement_pr_recommendations(self, story_details: dict, branch_name: str, workspace_path: str) -> dict:
+        title = story_details.get('title')
+        description = story_details.get('description', '')
+        
+        print(f"  [RemoteDeveloperAgent] Starting remote PR recommendations flow via MCP for: {title}")
+        
+        system_prompt = f"""You are an elite Developer Subagent. 
+Your workspace path locally is {workspace_path}. 
+The target GitHub repository is: '{story_details.get('repo_full_name', 'unknown')}'.
+You are working on the EXISTING branch '{branch_name}' which is already checked out.
+You have access to GitHub and Context7 Documentation via MCP tools.
+If you need documentation for libraries/frameworks, use the context7 tools.
+Your task:
+1. Read/understand the requested changes: {description}.
+2. Make the necessary code modifications in the workspace.
+3. Commit the changes and push them directly to the existing branch '{branch_name}' in the repository '{story_details.get('repo_full_name', 'unknown')}'. Do NOT create a new branch and do NOT create a new pull request.
+"""
+
+        async with load_dev_tools() as tools:
+            agent_executor = create_react_agent(self.llm, tools)
+            print("  [DeveloperAgent] Loaded MCP tools, executing ReAct reasoning loop...")
+            result = await agent_executor.ainvoke({"messages": [("user", system_prompt)]})
+            
+            content_raw = result["messages"][-1].content
+            if isinstance(content_raw, list):
+                content = "".join([item.get("text", "") if isinstance(item, dict) else str(item) for item in content_raw])
+            else:
+                content = str(content_raw)
+
+            print("  [DeveloperAgent] Execution Result:")
+            print(content)
+        
+        return {
+            "status": "success",
+            "branch": branch_name,
+            "message": "Used MCP to implement PR recommendations."
         }

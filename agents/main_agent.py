@@ -3,10 +3,12 @@ Main Supervisor Agent Module
 This agent leverages sub-agents to complete the software development lifecycle tasks based on User Stories.
 """
 import asyncio
+import re
 from typing import List, Dict
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.tools import StructuredTool
 from langgraph.prebuilt import create_react_agent
+from git import Repo
 
 from agents.local_developer_agent import LocalDeveloperAgent
 from agents.developer_agent import RemoteDeveloperAgent
@@ -41,6 +43,9 @@ class SupervisorAgent:
         if not story_details:
             return f"Failed to retrieve ticket {issue_identifier}"
             
+        # Transition to In Progress
+        await self.ticket_manager.transition_ticket(issue_identifier, "In Progress")
+            
         print(f"[Supervisor] Analyzing User Story: {story_details.get('title')}")
         
         # 2. Delegate to Environment Agent to setup workspace
@@ -52,6 +57,7 @@ class SupervisorAgent:
             return "Environment preparation failed."
             
         workspace_path = env_result.get('workspace_path')
+        story_details['repo_full_name'] = env_result.get('repo_full_name')
         
         # 3. Delegate to Developer Agent based on mode
         print(f"[Supervisor] Delegating to {self.mode.capitalize()} Developer Agent...")
@@ -70,6 +76,9 @@ class SupervisorAgent:
         test_result = self.tester.write_and_run_tests(story_details, dev_result.get('code_files', []), workspace_path)
         print(f"[Supervisor] Tester finished with status: {test_result.get('status')}")
         
+        # Transition to In Review
+        await self.ticket_manager.transition_ticket(issue_identifier, "In Review")
+        
         # 5. Final synthesis and output
         return {
             "status": "completed",
@@ -77,6 +86,126 @@ class SupervisorAgent:
             "development": dev_result,
             "testing": test_result
         }
+
+    def parse_pr_identifier(self, pr_url_or_number: str):
+        """
+        Parses PR URL or identifier into (owner, repo, pr_number).
+        Supported formats:
+        - https://github.com/owner/repo/pull/12
+        - owner/repo#12
+        - repo#12
+        - 12
+        """
+        pr_url_or_number = pr_url_or_number.strip()
+        
+        # 1. Check URL
+        url_match = re.search(r"github\.com/([\w\-]+)/([\w\-]+)/pull/(\d+)", pr_url_or_number)
+        if url_match:
+            return url_match.group(1), url_match.group(2), int(url_match.group(3))
+            
+        # 2. Check repo#number or owner/repo#number
+        hash_match = re.search(r"(?:([\w\-]+)/)?([\w\-]+)#(\d+)", pr_url_or_number)
+        if hash_match:
+            owner = hash_match.group(1) or os.environ.get("GITHUB_OWNER", "astrelya")
+            return owner, hash_match.group(2), int(hash_match.group(3))
+            
+        # 3. Check just a number
+        number_match = re.match(r"^(\d+)$", pr_url_or_number)
+        if number_match:
+            owner = os.environ.get("GITHUB_OWNER", "astrelya")
+            repo = os.environ.get("GITHUB_REPO", "appstrelya")
+            return owner, repo, int(number_match.group(1))
+            
+        raise ValueError(f"Could not parse Pull Request identifier: {pr_url_or_number}. Please provide a full GitHub PR URL.")
+
+    async def implement_pr_recommendations(self, pr_url_or_number: str) -> str:
+        print(f"[Supervisor] Starting PR Review Correction flow for {pr_url_or_number}...")
+        
+        # 1. Parse PR Identifier
+        try:
+            owner, repo, pr_number = self.parse_pr_identifier(pr_url_or_number)
+        except ValueError as e:
+            return str(e)
+            
+        # 2. Fetch PR details using TicketManager
+        pr_details = await self.ticket_manager.get_pr_details(owner, repo, pr_number)
+        if not pr_details or "branch_name" not in pr_details:
+            return f"Failed to retrieve PR details or branch name for PR #{pr_number}."
+            
+        recommendations = pr_details.get("recommendations", "Apply requested PR review edits.")
+        print(f"[Supervisor] Retrieved recommendations for PR #{pr_number}: {recommendations}")
+        
+        # 3. Prepare workspace with EnvironmentAgent
+        story_details = {
+            "id": f"{repo}#{pr_number}",
+            "title": f"Fix PR #{pr_number} Recommendations",
+            "description": recommendations
+        }
+        env_result = self.environment.prepare_environment(story_details)
+        if env_result.get("status") != "success":
+            return "Environment preparation failed for PR review recommendations flow."
+            
+        workspace_path = env_result.get("workspace_path")
+        story_details['repo_full_name'] = env_result.get('repo_full_name')
+        branch_name = pr_details["branch_name"]
+        
+        # 4. Checkout the PR branch
+        try:
+            repo_obj = Repo(workspace_path)
+            repo_obj.git.fetch("origin")
+            repo_obj.git.checkout(branch_name)
+            print(f"[Supervisor] Successfully checked out branch '{branch_name}'.")
+        except Exception as e:
+            try:
+                repo_obj.git.checkout("-b", branch_name, f"origin/{branch_name}")
+                print(f"[Supervisor] Successfully checked out and tracked branch '{branch_name}'.")
+            except Exception as ex:
+                return f"Could not checkout branch '{branch_name}': {ex}"
+                
+        # 5. Search for associated Jira ticket from branch name/recommendations to transition it
+        ticket_id = None
+        jira_pattern = re.compile(r"([A-Z]+-\d+)")
+        match = jira_pattern.search(branch_name)
+        if match:
+            ticket_id = match.group(1)
+        else:
+            match = jira_pattern.search(recommendations)
+            if match:
+                ticket_id = match.group(1)
+                
+        if ticket_id:
+            print(f"[Supervisor] Found associated Jira ticket {ticket_id}. Transitioning to In Progress...")
+            await self.ticket_manager.transition_ticket(ticket_id, "In Progress")
+            
+        # 6. Delegate to Developer Agent based on mode
+        print(f"[Supervisor] Delegating to {self.mode.capitalize()} Developer Agent for PR recommendations...")
+        if self.mode == "local":
+            dev_result = await self.local_developer.implement_pr_recommendations(
+                story_details, branch_name, workspace_path
+            )
+        else:
+            dev_result = await self.remote_developer.implement_pr_recommendations(
+                story_details, branch_name, workspace_path
+            )
+            
+        print(f"[Supervisor] Developer finished with status: {dev_result.get('status')}")
+        if dev_result.get("status") != "success":
+            return "PR recommendations development phase failed."
+            
+        # 7. Run/write tests
+        print("[Supervisor] Delegating to Tester Agent...")
+        test_result = self.tester.write_and_run_tests(story_details, dev_result.get('code_files', []), workspace_path)
+        print(f"[Supervisor] Tester finished with status: {test_result.get('status')}")
+        
+        # 8. Transition Jira ticket to In Review
+        if ticket_id:
+            print(f"[Supervisor] Transitioning Jira ticket {ticket_id} to In Review...")
+            await self.ticket_manager.transition_ticket(ticket_id, "In Review")
+            
+        # 9. Return summary
+        summary = f"PR Recommendations fix applied successfully! Strategy: {self.mode}. "
+        summary += f"Branch '{branch_name}' updated and pushed. "
+        return summary + f"Test coverage: {test_result.get('coverage', 'N/A')}."
 
     async def process_chat(self, user_command: str) -> str:
         """
@@ -103,7 +232,15 @@ class SupervisorAgent:
             summary = f"Implementation complete! Strategy: {self.mode}. "
             if 'branch' in result['development']:
                 summary += f"Branch: {result['development']['branch']}. "
+            pr_url = result['development'].get('pr_url')
+            if pr_url:
+                summary += f"PR URL: {pr_url}. "
             return summary + f"Test coverage: {result['testing'].get('coverage', 'N/A')}."
+
+        async def fix_pr(pr_url_or_number: str) -> str:
+            """Triggers the PR review correction workflow. Fetches PR comments, checks out the PR branch, implements recommendations, runs tests, and pushes updates. Requires a PR URL or ID."""
+            result = await self.implement_pr_recommendations(pr_url_or_number)
+            return result
 
         async def set_mode(mode: str) -> str:
             """Allows the user to switch between 'local' and 'remote' development modes."""
@@ -118,6 +255,7 @@ class SupervisorAgent:
         supervisor_tools = [
             StructuredTool.from_function(coroutine=fetch_tickets, name="FetchTickets", description="Lists available tickets. Can optionally filter by status (e.g. 'TODO')."),
             StructuredTool.from_function(coroutine=implement_ticket, name="ImplementTicket", description="Develops and implements a specific ticket ID."),
+            StructuredTool.from_function(coroutine=fix_pr, name="ImplementPRRecommendations", description="Reviews a GitHub Pull Request by fetching comments, making requested code edits, running tests, and pushing updates directly to the PR branch."),
             StructuredTool.from_function(coroutine=set_mode, name="SetDeveloperMode", description="Changes implementation strategy between 'local' and 'remote'.")
         ] + manager.doc_tools
         

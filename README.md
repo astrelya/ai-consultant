@@ -13,6 +13,7 @@ AI Consultant is a hierarchical multi-agent system built with **LangGraph** and 
 *   **Deep Documentation Integration**: Integrated with **Context7 (Upstash)** MCP server, allowing agents to "read the manual" when encountering unknown libraries.
 *   **Official GitHub MCP support**: Uses the official GitHub-maintained Docker image for robust repository management (PRs, Issues, Branching).
 *   **Conversation Memory**: The Supervisor remembers your previous requests, context, and preferred settings during a session.
+*   **Jira Watcher**: Automatically detects new Jira tickets and triggers the implementation pipeline without manual intervention.
 
 ---
 
@@ -53,6 +54,10 @@ GEMINI_MODEL=gemini-3.1-pro-preview
 
 # Optional Documentation Access
 CONTEXT7_API_KEY=your_upstash_context7_key
+
+# Jira Configuration
+JIRA_URL=https://your-domain.atlassian.net
+JIRA_POLL_INTERVAL=60
 ```
 
 ---
@@ -69,6 +74,12 @@ python main.py
 *   `Switch to local mode`: Tells the supervisor to start cloning and editing physical files.
 *   `Implement repo-name#21`: Starts the full autonomous dev loop for ticket #21.
 *   `What is Javelit?`: If Context7 is configured, the Supervisor will search the documentation and explain it to you.
+
+### Jira Watcher (Auto-Implementation)
+To run the system in fully autonomous mode where it watches for new Jira tickets and implements them automatically:
+```bash
+python jira_watcher.py
+```
 
 ---
 

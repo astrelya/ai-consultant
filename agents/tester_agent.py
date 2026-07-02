@@ -11,8 +11,8 @@ from tools.file_ops import read_file
 
 class TesterAgent:
     def __init__(self):
-        model_name = os.environ.get("TICKET_MODEL", "gemini-2.5-flash")
-        self.llm = ChatGoogleGenerativeAI(model=model_name, temperature=0)
+        model_name = os.getenv("CODING_MODEL", "gemini-2.5-flash")
+        self.llm = ChatGoogleGenerativeAI(model=model_name)
 
     def write_and_run_tests(self, story_details: dict, code_files: list, workspace_path: str) -> dict:
         print(f"  [TesterAgent] Analyzing files for testing: {code_files}")
@@ -66,18 +66,36 @@ class TesterAgent:
             test_code = test_code.strip()
             
             with open(test_file_path, "w") as f:
-                f.write(f"# Auto-generated unit tests for {file_name}\n")
-                f.write("def test_perform_action():\n")
-                f.write("    assert True\n")
+                f.write(test_code)
             
             test_files.append(test_file_path)
             print(f"  [TesterAgent] Created test file: {test_file_path}")
             
-        print("  [TesterAgent] Running tests... (mocked)")
+        print("  [TesterAgent] Running tests...")
         
-        return {
-            "status": "success",
-            "test_files": test_files,
-            "coverage": "100%",
-            "message": "All unit tests passed."
-        }
+        # Execute tests via subprocess (pytest)
+        tests_dir = os.path.join(workspace_path, "tests")
+        try:
+            result = subprocess.run(
+                ["pytest", tests_dir],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            
+            status = "success" if result.returncode == 0 else "failure"
+            output = result.stdout + "\n" + result.stderr
+            
+            return {
+                "status": status,
+                "test_files": test_files,
+                "output": output,
+                "message": f"Tests completed with status: {status}"
+            }
+        except Exception as e:
+            return {
+                "status": "failure",
+                "test_files": test_files,
+                "output": str(e),
+                "message": "Failed to execute tests."
+            }

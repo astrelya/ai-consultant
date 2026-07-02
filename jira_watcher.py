@@ -16,7 +16,7 @@ logging.getLogger("langgraph").setLevel(logging.ERROR)
 
 load_dotenv()
 
-async def poll_jira_for_new_tickets(supervisor: SupervisorAgent, poll_interval: int = 60):
+async def poll_jira_for_new_tickets(supervisor: SupervisorAgent, poll_interval: int = int(os.environ.get("JIRA_WATCHER_POLL_INTERVAL", 500))):
     """
     Polls Jira for new tickets in the 'To Do' or 'Backlog' status.
     When a new ticket is found, it sends a notification and triggers the implementation pipeline.
@@ -87,8 +87,8 @@ async def main():
     
     try:
         supervisor = SupervisorAgent()
-        # Poll every 60 seconds by default
-        poll_interval = int(os.environ.get("JIRA_POLL_INTERVAL", "60"))
+        # Poll every 500 seconds by default
+        poll_interval = int(os.environ.get("JIRA_WATCHER_POLL_INTERVAL", "500"))
         await poll_jira_for_new_tickets(supervisor, poll_interval=poll_interval)
     except KeyboardInterrupt:
         print("\n[JiraWatcher] Shutting down...")

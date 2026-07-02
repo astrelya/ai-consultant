@@ -34,7 +34,7 @@ async def main():
         
         # Initialize and start the Jira Watcher
         watcher = JiraWatcher(supervisor)
-        watcher_task = asyncio.create_task(watcher.start_watching(poll_interval=60))
+        watcher_task = asyncio.create_task(watcher.start_watching(poll_interval=int(os.environ.get("JIRA_WATCHER_POLL_INTERVAL", 500))))
         
         while True:
             try:

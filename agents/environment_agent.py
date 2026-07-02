@@ -37,6 +37,7 @@ class EnvironmentAgent:
             extracted = response.content.strip()
             # Clean up potential markdown formatting or quotes
             extracted = extracted.replace('`', '').replace('"', '').replace("'", '').strip()
+            print(f"  [EnvironmentAgent] LLM extracted repo name: '{extracted}'")
             return extracted
         except Exception as e:
             print(f"  [EnvironmentAgent] Error using LLM to extract repository name: {e}")
@@ -78,16 +79,42 @@ class EnvironmentAgent:
         github_token = os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN", os.environ.get("GITHUB_TOKEN"))
         repo_url = f"https://x-access-token:{github_token}@github.com/{full_repo}.git"
         
-        if os.path.exists(target_path):
-            print(f"  [EnvironmentAgent] Directory exists. Pulling latest code for {repo_name}...")
-            repo = Repo(target_path)
-            # Ensure we are on default branch and clean
-            repo.git.checkout(repo.remotes.origin.refs[0].name.split('/')[-1])
-            repo.remotes.origin.pull()
-        else:
-            print(f"  [EnvironmentAgent] Cloning {full_repo} to {target_path}...")
-            Repo.clone_from(repo_url, target_path)
+        try:
+            if os.path.exists(target_path):
+                print(f"  [EnvironmentAgent] Directory exists. Pulling latest code for {repo_name}...")
+                repo = Repo(target_path)
+                # Fetch first so remote refs are populated (handles local-only repos)
+                try:
+                    repo.remotes.origin.fetch()
+                except Exception:
+                    pass
+                refs = repo.remotes.origin.refs
+                if refs:
+                    default_branch = refs[0].name.split('/')[-1]
+                else:
+                    # No remote refs available — derive from HEAD or fall back
+                    try:
+                        default_branch = repo.active_branch.name
+                    except TypeError:
+                        default_branch = "main"
+                    print(f"  [EnvironmentAgent] No remote refs found, using branch '{default_branch}'")
+                repo.git.checkout(default_branch)
+                pull_result = repo.remotes.origin.pull()
+                print(f"  [EnvironmentAgent] Pull complete on branch '{default_branch}': {[str(r) for r in pull_result]}")
+            else:
+                print(f"  [EnvironmentAgent] Cloning {full_repo} to {target_path}...")
+                Repo.clone_from(repo_url, target_path)
+                print(f"  [EnvironmentAgent] Clone successful.")
+        except Exception as e:
+            print(f"  [EnvironmentAgent] Git operation failed: {type(e).__name__}: {e}")
+            return {
+                "status": "failure",
+                "workspace_path": "",
+                "repo_full_name": full_repo,
+                "message": f"Git operation failed: {e}"
+            }
 
+        print(f"  [EnvironmentAgent] Workspace ready: {target_path} (repo: {full_repo})")
         return {
             "status": "success",
             "workspace_path": target_path,

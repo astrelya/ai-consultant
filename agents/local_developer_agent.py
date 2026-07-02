@@ -1,6 +1,6 @@
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 from langchain_core.tools import tool
 from git import Repo
 from tools.file_ops import read_file, write_file, list_files
@@ -69,17 +69,32 @@ ALWAYS use absolute paths for file operations. The base directory is {workspace_
 
         local_tools = [local_read_file, local_write_file, local_list_files, local_git_commit_and_push]
         
+        import time
         async with load_context7_mcp_tools() as doc_tools:
             combined_tools = local_tools + doc_tools
-            agent_executor = create_react_agent(self.llm, combined_tools)
-            
+            print(f"  [LocalDeveloperAgent] {len(local_tools)} local tools + {len(doc_tools)} doc tools loaded.")
+            agent_executor = create_agent(self.llm, combined_tools)
+
+            start_time = time.time()
             result = await agent_executor.ainvoke({"messages": [("user", system_prompt)]})
-        
+
+            for msg in result.get("messages", []):
+                if msg.type == "ai" and getattr(msg, "tool_calls", None):
+                    for tc in msg.tool_calls:
+                        print(f"    -> [Debug] LLM called tool '{tc['name']}' with args: {str(tc['args'])[:200]}")
+                elif msg.type == "tool":
+                    print(f"    <- [Debug] Tool '{msg.name}' returned: {str(msg.content)[:300]}")
+
+            elapsed = time.time() - start_time
+            print(f"  [LocalDeveloperAgent] ReAct loop finished in {elapsed:.2f} seconds")
+
         content_raw = result["messages"][-1].content
         if isinstance(content_raw, list):
             content = "".join([item.get("text", "") if isinstance(item, dict) else str(item) for item in content_raw])
         else:
             content = str(content_raw)
+
+        print(f"  [LocalDeveloperAgent] Final LLM message:\n{content}")
             
         return {
             "status": "success",
@@ -108,17 +123,32 @@ ALWAYS use absolute paths for file operations. The base directory is {workspace_
 
         local_tools = [local_read_file, local_write_file, local_list_files, local_git_commit_and_push]
         
+        import time
         async with load_context7_mcp_tools() as doc_tools:
             combined_tools = local_tools + doc_tools
-            agent_executor = create_react_agent(self.llm, combined_tools)
-            
+            print(f"  [LocalDeveloperAgent] {len(local_tools)} local tools + {len(doc_tools)} doc tools loaded.")
+            agent_executor = create_agent(self.llm, combined_tools)
+
+            start_time = time.time()
             result = await agent_executor.ainvoke({"messages": [("user", system_prompt)]})
-        
+
+            for msg in result.get("messages", []):
+                if msg.type == "ai" and getattr(msg, "tool_calls", None):
+                    for tc in msg.tool_calls:
+                        print(f"    -> [Debug] LLM called tool '{tc['name']}' with args: {str(tc['args'])[:200]}")
+                elif msg.type == "tool":
+                    print(f"    <- [Debug] Tool '{msg.name}' returned: {str(msg.content)[:300]}")
+
+            elapsed = time.time() - start_time
+            print(f"  [LocalDeveloperAgent] ReAct loop finished in {elapsed:.2f} seconds")
+
         content_raw = result["messages"][-1].content
         if isinstance(content_raw, list):
             content = "".join([item.get("text", "") if isinstance(item, dict) else str(item) for item in content_raw])
         else:
             content = str(content_raw)
+
+        print(f"  [LocalDeveloperAgent] Final LLM message:\n{content}")
             
         return {
             "status": "success",

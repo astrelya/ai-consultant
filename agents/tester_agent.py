@@ -3,6 +3,7 @@ Tester Agent Module
 Responsible for generating unit tests for the code created by the Developer Agent.
 """
 import os
+import time
 import subprocess
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -16,6 +17,7 @@ class TesterAgent:
     def write_and_run_tests(self, story_details: dict, code_files: list, workspace_path: str) -> dict:
         print(f"  [TesterAgent] Analyzing files for testing: {code_files}")
         
+        start_time = time.time()
         test_files = []
         for file in code_files:
             file_name = os.path.basename(file)
@@ -44,7 +46,15 @@ class TesterAgent:
             ]
             
             response = self.llm.invoke(messages)
-            test_code = response.content.strip()
+            # Gemini can return content as a list of blocks or a plain string
+            content = response.content
+            if isinstance(content, list):
+                test_code = "".join(
+                    block.get("text", "") if isinstance(block, dict) else str(block)
+                    for block in content
+                ).strip()
+            else:
+                test_code = content.strip()
             
             # Remove markdown code blocks if present
             if test_code.startswith("```python"):

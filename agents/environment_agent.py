@@ -1,6 +1,11 @@
+import base64
 import os
+
+import requests
 from git import Repo
 from langchain_google_genai import ChatGoogleGenerativeAI
+
+from agents.tester_agent import _CI_WORKFLOW_TEMPLATE
 
 class EnvironmentAgent:
     def __init__(self):
@@ -114,6 +119,7 @@ class EnvironmentAgent:
                 "message": f"Git operation failed: {e}"
             }
 
+        self._ensure_ci_workflow(full_repo, github_token)
         print(f"  [EnvironmentAgent] Workspace ready: {target_path} (repo: {full_repo})")
         return {
             "status": "success",
@@ -121,4 +127,36 @@ class EnvironmentAgent:
             "repo_full_name": full_repo,
             "message": f"Repository {full_repo} prepared at {target_path}"
         }
+
+    def _ensure_ci_workflow(self, repo_full_name: str, github_token: str):
+        """Pushes the AI agent test workflow to the repo if it doesn't exist yet."""
+        if not github_token:
+            print("  [EnvironmentAgent] No GitHub token — skipping CI workflow setup.")
+            return
+        owner, repo = (repo_full_name.split("/") + ["unknown"])[:2]
+        api = "https://api.github.com"
+        path = ".github/workflows/ai-tests.yml"
+        url = f"{api}/repos/{owner}/{repo}/contents/{path}"
+        headers = {
+            "Authorization": f"Bearer {github_token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        try:
+            get_resp = requests.get(url, headers=headers, timeout=10)
+            if get_resp.status_code == 200:
+                print(f"  [EnvironmentAgent] CI workflow already exists in {repo_full_name}.")
+                return
+            encoded = base64.b64encode(_CI_WORKFLOW_TEMPLATE.encode("utf-8")).decode("utf-8")
+            payload = {
+                "message": "ci: add AI agent test workflow",
+                "content": encoded,
+            }
+            put_resp = requests.put(url, headers=headers, json=payload, timeout=15)
+            if put_resp.status_code in (200, 201):
+                print(f"  [EnvironmentAgent] CI workflow pushed to {repo_full_name}.")
+            else:
+                print(f"  [EnvironmentAgent] Failed to push CI workflow: {put_resp.status_code} {put_resp.text[:200]}")
+        except Exception as e:
+            print(f"  [EnvironmentAgent] Error setting up CI workflow: {e}")
 

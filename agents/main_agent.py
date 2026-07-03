@@ -74,11 +74,20 @@ class SupervisorAgent:
 
         # 4. Delegate to Tester Agent for Unit Tests
         print("[Supervisor] Delegating to Tester Agent...")
-        test_result = self.tester.write_and_run_tests(story_details, dev_result.get('code_files', []), workspace_path)
+        test_result = self.tester.write_and_run_tests(
+            story_details,
+            dev_result.get('code_files', []),
+            workspace_path,
+            mode=self.mode,
+            pr_url=dev_result.get('pr_url'),
+        )
         print(f"[Supervisor] Tester finished with status: {test_result.get('status')} | {test_result.get('message', '')}")
-        
-        # Transition to In Review
-        await self.ticket_manager.transition_ticket(issue_identifier, "In Review")
+
+        # Only transition to In Review if tests passed
+        if test_result.get('status') == 'success':
+            await self.ticket_manager.transition_ticket(issue_identifier, "In Review")
+        else:
+            print(f"[Supervisor] Tests failed — ticket {issue_identifier} stays In Progress.")
         
         # 5. Final synthesis and output
         return {

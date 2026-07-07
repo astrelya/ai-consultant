@@ -18,9 +18,11 @@ class RemoteDeveloperAgent:
         title = story_details.get('title')
         description = story_details.get('description', '')
         branch_name = f"feature/{story_details.get('id', 'new-feature')}"
-        
+        base_branch = story_details.get('base_branch', 'main')
+
         print(f"  [RemoteDeveloperAgent] Starting remote dev flow via MCP for: {title}")
-        
+        print(f"  [RemoteDeveloperAgent] Base branch: '{base_branch}'")
+
         repo_full_name = story_details.get('repo_full_name', 'unknown')
         owner, repo = (repo_full_name.split('/') + ['unknown'])[:2]
 
@@ -33,26 +35,31 @@ Details: {description}
 
 You MUST complete these steps IN ORDER using the GitHub MCP tools:
 
-STEP 1 - Get the default branch SHA:
-  Call get_file_contents or list_branches to find the current HEAD SHA of the default branch (usually 'master' or 'main').
+STEP 1 - Get the base branch SHA:
+  Call list_branches to confirm branch '{base_branch}' exists and get its HEAD SHA.
 
 STEP 2 - Create a new branch:
-  Call create_branch with owner='{owner}', repo='{repo}', branch='{branch_name}', from_branch='master' (or the default branch name found in step 1).
+  Call create_branch with owner='{owner}', repo='{repo}', branch='{branch_name}', from_branch='{base_branch}'.
+  IMPORTANT: You MUST branch from '{base_branch}', NOT from 'main' or 'master'.
 
-STEP 3 - Read existing code for context:
-  Call get_file_contents to read the relevant file(s) in the repository. For example, read 'agents/tester_agent.py' to understand the current implementation.
+STEP 3 - Explore and understand existing code context semantically:
+  Use codegraph tools to search symbols, list definitions, or browse reference relationships to find the exact code elements to modify without needing to read dozens of files.
 
 STEP 4 - Push the new/modified file(s):
   Call create_or_update_file (or push_files) with owner='{owner}', repo='{repo}', branch='{branch_name}' to write your implementation.
 
 STEP 5 - Create a Pull Request:
-  Call create_pull_request with owner='{owner}', repo='{repo}', head='{branch_name}', base='master', title and body summarizing your changes.
+  Call create_pull_request with owner='{owner}', repo='{repo}', head='{branch_name}', base='{base_branch}', title and body summarizing your changes.
 
 IMPORTANT:
 - Always use owner='{owner}' and repo='{repo}' (NOT the full path '{repo_full_name}').
 - Do NOT skip steps. Do NOT explain what you will do without calling tools.
 - If a step fails, log the error and try an alternative approach.
+- Do NOT read the same file more than once. Cache results mentally and move forward.
+- You have a maximum of 100 reasoning steps. After exploring context (max 10 reads), you MUST write code and create the PR. Do not keep reading files indefinitely.
 """
+        from tools.caveman_prompt import wrap_with_caveman
+        system_prompt = wrap_with_caveman(system_prompt)
 
         # Context manager for the MCP connection (GitHub + Context7)
         async with load_dev_tools() as tools:
@@ -70,7 +77,7 @@ IMPORTANT:
                 # Stream events in real-time so we see each step as it happens
                 async for event in agent_executor.astream_events(
                     {"messages": [("user", system_prompt)]},
-                    config={"recursion_limit": 50},
+                    config={"recursion_limit": 100},
                     version="v2",
                 ):
                     kind = event.get("event")
@@ -164,6 +171,8 @@ Your task:
 2. Make the necessary code modifications in the workspace.
 3. Commit the changes and push them directly to the existing branch '{branch_name}' in the repository '{story_details.get('repo_full_name', 'unknown')}'. Do NOT create a new branch and do NOT create a new pull request.
 """
+        from tools.caveman_prompt import wrap_with_caveman
+        system_prompt = wrap_with_caveman(system_prompt)
 
         async with load_dev_tools() as tools:
             agent_executor = create_agent(self.llm, tools)

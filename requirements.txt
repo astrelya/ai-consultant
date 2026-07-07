@@ -9,3 +9,9 @@ requests
 pytest
 GitPython
 plyer
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+pypdf
+websockets

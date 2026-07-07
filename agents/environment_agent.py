@@ -48,27 +48,25 @@ class EnvironmentAgent:
             print(f"  [EnvironmentAgent] Error using LLM to extract repository name: {e}")
             return "unknown"
 
-    def prepare_environment(self, story_details: dict) -> dict:
+    async def prepare_environment(self, story_details: dict, job_id: str = None, mode: str = None) -> dict:
         ticket_id = story_details.get("id", "new_project_repo")
         print(f"  [EnvironmentAgent] Checking environment needs for story: {ticket_id}")
-        
+
+        agent_mode = mode or os.environ.get("AGENT_MODE", "remote")
+
+        # Resolve the repo name (needed for both modes)
         extracted_repo = self._extract_repo_name(story_details)
-        
-        # If unknown, ask user
         if extracted_repo.lower() == "unknown" or not extracted_repo:
-            print(f"\n[Agent]: I could not determine the GitHub repository for ticket {ticket_id} from the ticket details.")
-            user_input = input("Please enter the repository name (e.g. 'appstrelya' or 'owner/repo'): ").strip()
-            if user_input:
-                extracted_repo = user_input
+            prompt = f"I could not determine the GitHub repository for ticket **{ticket_id}**. Please enter the repository name (e.g. `appstrelya` or `owner/repo`):"
+            if job_id:
+                from backend.websocket import broadcast_input_required
+                extracted_repo = await broadcast_input_required(prompt, job_id, timeout=120)
             else:
-                return {
-                    "status": "failure",
-                    "workspace_path": "",
-                    "repo_full_name": "",
-                    "message": "Repository name was not provided."
-                }
-        
-        # Parse Repo from the extracted string
+                print(f"\n[Agent]: {prompt}")
+                extracted_repo = input("Repository name: ").strip()
+            if not extracted_repo:
+                return {"status": "failure", "workspace_path": "", "repo_full_name": "", "message": "Repository name was not provided."}
+
         github_owner = os.environ.get("GITHUB_OWNER", "your-github-username")
         if "/" in extracted_repo:
             full_repo = extracted_repo.split(".git")[0]
@@ -76,9 +74,21 @@ class EnvironmentAgent:
                 full_repo = full_repo.split("github.com/")[-1]
         else:
             full_repo = f"{github_owner}/{extracted_repo}"
-            
+
+        # In remote mode the developer agent works entirely via GitHub MCP tools.
+        # No local clone required.
+        if agent_mode == "remote":
+            print(f"  [EnvironmentAgent] Remote mode — skipping clone. Repo: {full_repo}")
+            return {
+                "status": "success",
+                "workspace_path": "",
+                "repo_full_name": full_repo,
+                "message": f"Remote mode: no local clone needed for {full_repo}",
+            }
+
+        # Local mode — clone / pull as before
         repo_name = full_repo.split("/")[-1]
-        target_path = os.path.join(self.workspace_dir, repo_name)
+        target_path = os.path.join(self.workspace_dir, f"{repo_name}_{ticket_id.replace('/', '-').replace('#', '-')}")
         
         # Clone or Pull
         github_token = os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN", os.environ.get("GITHUB_TOKEN"))

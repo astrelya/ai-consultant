@@ -41,6 +41,7 @@ def local_git_commit_and_push(repo_path: str, branch_name: str, message: str) ->
     return f"Successfully pushed changes to branch {branch_name}"
 
 from tools.context7_mcp import load_context7_mcp_tools
+from tools.codegraph_mcp import load_codegraph_mcp_tools
 
 class LocalDeveloperAgent:
     def __init__(self):
@@ -66,13 +67,15 @@ Your task:
 
 ALWAYS use absolute paths for file operations. The base directory is {workspace_path}.
 """
+        from tools.caveman_prompt import wrap_with_caveman
+        system_prompt = wrap_with_caveman(system_prompt)
 
         local_tools = [local_read_file, local_write_file, local_list_files, local_git_commit_and_push]
         
         import time
-        async with load_context7_mcp_tools() as doc_tools:
-            combined_tools = local_tools + doc_tools
-            print(f"  [LocalDeveloperAgent] {len(local_tools)} local tools + {len(doc_tools)} doc tools loaded.")
+        async with load_context7_mcp_tools() as doc_tools, load_codegraph_mcp_tools() as codegraph_tools:
+            combined_tools = local_tools + doc_tools + codegraph_tools
+            print(f"  [LocalDeveloperAgent] {len(local_tools)} local + {len(doc_tools)} doc + {len(codegraph_tools)} codegraph tools loaded.")
             agent_executor = create_agent(self.llm, combined_tools)
 
             start_time = time.time()
@@ -120,13 +123,15 @@ Your task:
 
 ALWAYS use absolute paths for file operations. The base directory is {workspace_path}.
 """
+        from tools.caveman_prompt import wrap_with_caveman
+        system_prompt = wrap_with_caveman(system_prompt)
 
         local_tools = [local_read_file, local_write_file, local_list_files, local_git_commit_and_push]
         
         import time
-        async with load_context7_mcp_tools() as doc_tools:
-            combined_tools = local_tools + doc_tools
-            print(f"  [LocalDeveloperAgent] {len(local_tools)} local tools + {len(doc_tools)} doc tools loaded.")
+        async with load_context7_mcp_tools() as doc_tools, load_codegraph_mcp_tools() as codegraph_tools:
+            combined_tools = local_tools + doc_tools + codegraph_tools
+            print(f"  [LocalDeveloperAgent] {len(local_tools)} local + {len(doc_tools)} doc + {len(codegraph_tools)} codegraph tools loaded.")
             agent_executor = create_agent(self.llm, combined_tools)
 
             start_time = time.time()

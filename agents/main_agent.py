@@ -35,13 +35,18 @@ class SupervisorAgent:
         model_name = os.environ.get("TICKET_MODEL", "gemini-2.5-flash")
         self.llm = ChatGoogleGenerativeAI(model=model_name, temperature=0)
 
-    async def run(self, issue_identifier: str):
+    async def run(self, issue_identifier: str, job_id: str = None, base_branch: str = None):
         print(f"[Supervisor] Fetching ticket details for {issue_identifier}...")
         
         # 1. Fetch User Story
         story_details = await self.ticket_manager.get_ticket_details(issue_identifier)
         if not story_details:
             return f"Failed to retrieve ticket {issue_identifier}"
+
+        # Inject base_branch if provided by the orchestrator (dependency chain)
+        if base_branch:
+            story_details['base_branch'] = base_branch
+            print(f"[Supervisor] Using base branch from dependency: '{base_branch}'")
             
         # Transition to In Progress
         await self.ticket_manager.transition_ticket(issue_identifier, "In Progress")
@@ -50,7 +55,7 @@ class SupervisorAgent:
         
         # 2. Delegate to Environment Agent to setup workspace
         print("[Supervisor] Delegating to Environment Agent...")
-        env_result = self.environment.prepare_environment(story_details)
+        env_result = await self.environment.prepare_environment(story_details, job_id, mode=self.mode)
         print(f"[Supervisor] Environment setup finished with status: {env_result.get('status')}")
         
         if env_result.get('status') != 'success':
@@ -74,7 +79,7 @@ class SupervisorAgent:
 
         # 4. Delegate to Tester Agent for Unit Tests
         print("[Supervisor] Delegating to Tester Agent...")
-        test_result = self.tester.write_and_run_tests(
+        test_result = await self.tester.write_and_run_tests(
             story_details,
             dev_result.get('code_files', []),
             workspace_path,
@@ -83,16 +88,19 @@ class SupervisorAgent:
         )
         print(f"[Supervisor] Tester finished with status: {test_result.get('status')} | {test_result.get('message', '')}")
 
-        # Only transition to In Review if tests passed
-        if test_result.get('status') == 'success':
+        # Transition to In Review as soon as a PR exists OR tests passed/skipped.
+        test_status = test_result.get('status')
+        pr_url = dev_result.get('pr_url')
+        if test_status in ('success', 'skipped') or pr_url:
             await self.ticket_manager.transition_ticket(issue_identifier, "In Review")
         else:
-            print(f"[Supervisor] Tests failed — ticket {issue_identifier} stays In Progress.")
+            print(f"[Supervisor] Tests failed and no PR found — ticket {issue_identifier} stays In Progress.")
         
         # 5. Final synthesis and output
         return {
             "status": "completed",
             "issue": issue_identifier,
+            "branch": dev_result.get('branch'),
             "development": dev_result,
             "testing": test_result
         }
@@ -128,7 +136,7 @@ class SupervisorAgent:
             
         raise ValueError(f"Could not parse Pull Request identifier: {pr_url_or_number}. Please provide a full GitHub PR URL.")
 
-    async def implement_pr_recommendations(self, pr_url_or_number: str) -> str:
+    async def implement_pr_recommendations(self, pr_url_or_number: str, job_id: str = None) -> str:
         print(f"[Supervisor] Starting PR Review Correction flow for {pr_url_or_number}...")
         
         # 1. Parse PR Identifier
@@ -151,26 +159,27 @@ class SupervisorAgent:
             "title": f"Fix PR #{pr_number} Recommendations",
             "description": recommendations
         }
-        env_result = self.environment.prepare_environment(story_details)
+        env_result = await self.environment.prepare_environment(story_details, job_id, mode=self.mode)
         if env_result.get("status") != "success":
             return "Environment preparation failed for PR review recommendations flow."
-            
+
         workspace_path = env_result.get("workspace_path")
         story_details['repo_full_name'] = env_result.get('repo_full_name')
         branch_name = pr_details["branch_name"]
-        
-        # 4. Checkout the PR branch
-        try:
-            repo_obj = Repo(workspace_path)
-            repo_obj.git.fetch("origin")
-            repo_obj.git.checkout(branch_name)
-            print(f"[Supervisor] Successfully checked out branch '{branch_name}'.")
-        except Exception as e:
+
+        # 4. Checkout the PR branch (local mode only)
+        if self.mode == "local" and workspace_path:
             try:
-                repo_obj.git.checkout("-b", branch_name, f"origin/{branch_name}")
-                print(f"[Supervisor] Successfully checked out and tracked branch '{branch_name}'.")
-            except Exception as ex:
-                return f"Could not checkout branch '{branch_name}': {ex}"
+                repo_obj = Repo(workspace_path)
+                repo_obj.git.fetch("origin")
+                repo_obj.git.checkout(branch_name)
+                print(f"[Supervisor] Successfully checked out branch '{branch_name}'.")
+            except Exception as e:
+                try:
+                    repo_obj.git.checkout("-b", branch_name, f"origin/{branch_name}")
+                    print(f"[Supervisor] Successfully checked out and tracked branch '{branch_name}'.")
+                except Exception as ex:
+                    return f"Could not checkout branch '{branch_name}': {ex}"
                 
         # 5. Search for associated Jira ticket from branch name/recommendations to transition it
         ticket_id = None
@@ -204,7 +213,7 @@ class SupervisorAgent:
             
         # 7. Run/write tests
         print("[Supervisor] Delegating to Tester Agent...")
-        test_result = self.tester.write_and_run_tests(story_details, dev_result.get('code_files', []), workspace_path)
+        test_result = await self.tester.write_and_run_tests(story_details, dev_result.get('code_files', []), workspace_path)
         print(f"[Supervisor] Tester finished with status: {test_result.get('status')}")
         
         # 8. Transition Jira ticket to In Review
@@ -217,7 +226,7 @@ class SupervisorAgent:
         summary += f"Branch '{branch_name}' updated and pushed. "
         return summary + f"Test coverage: {test_result.get('coverage', 'N/A')}."
 
-    async def process_chat(self, user_command: str) -> str:
+    async def process_chat(self, user_command: str, job_id: str = None) -> str:
         """
         Uses an LLM and LangGraph ReAct agent to route user intents interactively.
         """
@@ -235,7 +244,7 @@ class SupervisorAgent:
 
         async def implement_ticket(ticket_id: str) -> str:
             """Triggers the AI development workflow to build/fix a ticket. Requires a ticket_id like 'PROJ-101'."""
-            result = await self.run(ticket_id)
+            result = await self.run(ticket_id, job_id)
             if isinstance(result, str):
                 return result # Error message
             
@@ -249,7 +258,7 @@ class SupervisorAgent:
 
         async def fix_pr(pr_url_or_number: str) -> str:
             """Triggers the PR review correction workflow. Fetches PR comments, checks out the PR branch, implements recommendations, runs tests, and pushes updates. Requires a PR URL or ID."""
-            result = await self.implement_pr_recommendations(pr_url_or_number)
+            result = await self.implement_pr_recommendations(pr_url_or_number, job_id)
             return result
 
         async def set_mode(mode: str) -> str:
@@ -259,6 +268,53 @@ class SupervisorAgent:
             self.mode = mode.lower()
             return f"Developer mode successfully set to {self.mode}."
 
+        async def analyze_specification(path_or_url: str) -> str:
+            """Parses and analyzes a specification document (Markdown, PDF, or URL) and triggers ticket creation."""
+            from tools.spec_parser import SpecParser
+            from agents.spec_analyzer_agent import SpecAnalyzerAgent
+            from agents.ticket_creator_agent import TicketCreatorAgent
+            
+            parser = SpecParser()
+            try:
+                if path_or_url.startswith("http"):
+                    parsed_text = await parser.parse_url(path_or_url)
+                elif path_or_url.endswith(".pdf"):
+                    parsed_text = parser.parse_pdf(path_or_url)
+                else:
+                    parsed_text = parser.parse_file(path_or_url)
+                    
+                analyzer = SpecAnalyzerAgent()
+                stories = await analyzer.analyze_spec(parsed_text)
+                
+                creator = TicketCreatorAgent()
+                created_keys = await creator.create_tickets(stories, "local-cli-job")
+                return f"Successfully parsed specification. Created Jira tickets: {created_keys}"
+            except Exception as e:
+                return f"Failed to analyze specification: {e}"
+
+        async def implement_tickets_multi(ticket_ids: str) -> str:
+            """Orchestrates and executes implementation for multiple tickets (e.g., 'PROJ-1, PROJ-2') respecting their dependencies."""
+            from agents.multi_ticket_agent import MultiTicketOrchestrator
+            
+            ids_list = [tid.strip() for tid in ticket_ids.split(",") if tid.strip()]
+            orchestrator = MultiTicketOrchestrator()
+            res = await orchestrator.execute_tickets(ids_list, "local-cli-job")
+            return f"Multi-ticket implementation finished: {res.get('message', '')}"
+
+        async def show_dependency_graph(ticket_ids: str) -> str:
+            """Generates and displays an ASCII visualization of the dependency DAG for a set of tickets."""
+            from tools.dependency_analyzer import DependencyAnalyzer
+            
+            ids_list = [tid.strip() for tid in ticket_ids.split(",") if tid.strip()]
+            analyzer = DependencyAnalyzer()
+            dag = await analyzer.build_dag(ids_list)
+            
+            output = "ASCII Dependency Graph:\n"
+            for node, adj in dag.items():
+                deps = ", ".join(adj) if adj else "None"
+                output += f"  {node} ---> [{deps}]\n"
+            return output
+
         # Load interactive tools + Documentation tools for the chat session
         manager = await MCPManager.get_instance()
         
@@ -266,14 +322,19 @@ class SupervisorAgent:
             StructuredTool.from_function(coroutine=fetch_tickets, name="FetchTickets", description="Lists available tickets. Can optionally filter by status (e.g. 'TODO')."),
             StructuredTool.from_function(coroutine=implement_ticket, name="ImplementTicket", description="Develops and implements a specific ticket ID."),
             StructuredTool.from_function(coroutine=fix_pr, name="ImplementPRRecommendations", description="Reviews a GitHub Pull Request by fetching comments, making requested code edits, running tests, and pushing updates directly to the PR branch."),
-            StructuredTool.from_function(coroutine=set_mode, name="SetDeveloperMode", description="Changes implementation strategy between 'local' and 'remote'.")
+            StructuredTool.from_function(coroutine=set_mode, name="SetDeveloperMode", description="Changes implementation strategy between 'local' and 'remote'."),
+            StructuredTool.from_function(coroutine=analyze_specification, name="AnalyzeSpecification", description="Parses a spec file (Markdown, PDF, txt, or URL), extracts user stories and acceptance criteria, and creates them in Jira."),
+            StructuredTool.from_function(coroutine=implement_tickets_multi, name="ImplementTicketsMulti", description="Executes implementation on multiple tickets, performing topological sorting and parallel/sequential execution."),
+            StructuredTool.from_function(coroutine=show_dependency_graph, name="ShowDependencyGraph", description="Shows the topological dependency DAG for a given list of tickets in ASCII.")
         ] + manager.doc_tools
         
         # Create an intelligent routing agent bound with the tools
         router_agent = create_agent(self.llm, supervisor_tools)
         
         # Prepare messages including history
-        messages = [("system", "You are the orchestrating supervisor. You have access to project management, code implementation, and technical documentation tools (Context7). If a user asks a technical question about a library like Javelit, use Context7 to find the answer.")]
+        from tools.caveman_prompt import wrap_with_caveman
+        sys_instructions = wrap_with_caveman("You are the orchestrating supervisor. You have access to project management, code implementation, and technical documentation tools (Context7). If a user asks a technical question about a library like Javelit, use Context7 to find the answer.")
+        messages = [("system", sys_instructions)]
         messages.extend(self.chat_history)
         messages.append(("user", user_command))
         

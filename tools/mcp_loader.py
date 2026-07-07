@@ -1,4 +1,6 @@
+import asyncio
 import contextlib
+import logging
 import traceback
 from typing import AsyncGenerator, List
 from langchain_core.tools import BaseTool
@@ -7,7 +9,12 @@ from contextlib import AsyncExitStack
 from tools.github_mcp import load_github_mcp_tools
 from tools.context7_mcp import load_context7_mcp_tools
 from tools.jira_mcp import load_jira_mcp_tools
+from tools.codegraph_mcp import load_codegraph_mcp_tools
 import os
+
+# Suppress noisy schema-compatibility warnings from langchain_google_genai
+# (emitted for every 'additionalProperties' / '$schema' key in MCP tool schemas)
+logging.getLogger("langchain_google_genai._function_utils").setLevel(logging.ERROR)
 
 
 def _apply_gemini_enum_fix() -> None:
@@ -46,18 +53,24 @@ def _log_exception(label: str, e: BaseException, indent: str = "  ") -> None:
 
 class MCPManager:
     _instance = None
+    _lock = None  # asyncio.Lock, created lazily (event loop may not exist at import time)
     
     def __init__(self):
         self.stack = AsyncExitStack()
         self.github_tools = []
         self.doc_tools = []
         self.jira_tools = []
+        self.codegraph_tools = []
         
     @classmethod
     async def get_instance(cls):
-        if cls._instance is None:
-            cls._instance = MCPManager()
-            await cls._instance.initialize()
+        # Lazily create the lock on the running event loop
+        if cls._lock is None:
+            cls._lock = asyncio.Lock()
+        async with cls._lock:
+            if cls._instance is None:
+                cls._instance = MCPManager()
+                await cls._instance.initialize()
         return cls._instance
         
     async def initialize(self):
@@ -92,6 +105,15 @@ class MCPManager:
             print(f"  [MCPManager] Failed to load Context7 MCP: {type(e).__name__}: {e}")
             _log_exception("Context7 MCP", e)
             
+        # 4. Codegraph is ALWAYS loaded for semantic code understanding
+        try:
+            print("  [MCPManager] -> Starting Codegraph MCP proxy...")
+            self.codegraph_tools = await self.stack.enter_async_context(load_codegraph_mcp_tools())
+            print(f"  [MCPManager] Codegraph MCP loaded ({len(self.codegraph_tools)} tools)")
+        except BaseException as e:
+            print(f"  [MCPManager] Failed to load Codegraph MCP: {type(e).__name__}: {e}")
+            _log_exception("Codegraph MCP", e)
+            
         print("  [MCPManager] Ready!\n")
 
     async def close(self):
@@ -104,4 +126,5 @@ async def load_dev_tools() -> AsyncGenerator[List[BaseTool], None]:
     combined_tools.extend(manager.github_tools)
     combined_tools.extend(manager.doc_tools)
     combined_tools.extend(manager.jira_tools)
+    combined_tools.extend(manager.codegraph_tools)
     yield combined_tools

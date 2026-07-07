@@ -93,7 +93,7 @@ class TesterAgent:
     # Public entry point
     # -----------------------------------------------------------------------
 
-    def write_and_run_tests(
+    async def write_and_run_tests(
         self,
         story_details: dict,
         code_files: list,
@@ -105,9 +105,7 @@ class TesterAgent:
         if mode == "local":
             return self._run_local_tests(story_details, code_files, workspace_path, pr_url)
         else:
-            return asyncio.get_event_loop().run_until_complete(
-                self._run_remote_tests(story_details, code_files, workspace_path, pr_url)
-            )
+            return await self._run_remote_tests(story_details, code_files, workspace_path, pr_url)
 
     # -----------------------------------------------------------------------
     # MODE LOCAL — subprocess execution + 1 auto-fix attempt
@@ -248,19 +246,8 @@ class TesterAgent:
         }.get(lang, ["pytest", test_file_path, "-v", "--tb=short"])
 
     def _execute_tests(self, cmd: list, cwd: str):
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                cwd=cwd,
-                timeout=self.timeout,
-            )
-            return result.returncode == 0, result.stdout, result.stderr
-        except subprocess.TimeoutExpired:
-            return False, "", f"Test execution timed out after {self.timeout}s."
-        except FileNotFoundError as e:
-            return False, "", f"Test runner not found: {e}"
+        from tools.rtk_wrapper import run_command_with_rtk
+        return run_command_with_rtk(cmd, cwd=cwd, timeout=self.timeout)
 
     # -----------------------------------------------------------------------
     # LLM helpers
@@ -293,7 +280,8 @@ class TesterAgent:
             return ""
 
     def _analyze_failure_with_llm(self, logs: str) -> str:
-        prompt = (
+        from tools.caveman_prompt import wrap_with_caveman
+        prompt = wrap_with_caveman(
             f"The following are CI test failure logs. "
             f"Briefly explain what is failing and why:\n\n```\n{logs[:3000]}\n```"
         )

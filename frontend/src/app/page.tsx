@@ -98,7 +98,7 @@ export default function Dashboard() {
           // Heartbeat — agent is alive but no new log yet
           setIsAgentThinking(true);
         } else if (data.type === "input_required") {
-          // Agent is asking a question — show inline in chat AND as a global modal overlay
+          // Agent is asking a question — show inline in chat, not a modal
           setChatMessages((prev) => [...prev, {
             id: `input-${Date.now()}`,
             role: "agent",
@@ -107,9 +107,6 @@ export default function Dashboard() {
             jobId: data.job_id,
           }]);
           setPendingInputJobId(data.job_id || null);
-          // Show global modal so the user sees it regardless of active tab
-          setRepoInputModal({ visible: true, jobId: data.job_id || "", prompt: data.prompt || "Please provide the requested information:" });
-          setRepoInputValue("");
           // Still feed the log terminal as a warning line
           setLogs((prev) => [...prev, { message: `⚠ Agent input required: ${data.prompt}`, level: "WARNING", job_id: data.job_id }]);
         } else if (data.type === "chat_response") {
@@ -203,13 +200,12 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ job_id: repoInputModal.jobId, value: repoInputValue.trim() }),
       });
-      setLogs((prev) => [...prev, { message: `✅ Input provided: ${repoInputValue.trim()}`, level: "SUCCESS", job_id: repoInputModal.jobId }]);
+      setLogs((prev) => [...prev, { message: `✅ Repo name provided: ${repoInputValue.trim()}`, level: "SUCCESS", job_id: repoInputModal.jobId }]);
     } catch (err) {
       console.error("Failed to send repo input", err);
     } finally {
       setRepoInputModal({ visible: false, jobId: "", prompt: "" });
       setRepoInputValue("");
-      setPendingInputJobId(null);
     }
   };
 
@@ -1130,43 +1126,6 @@ export default function Dashboard() {
 
         </div>
       </main>
-
-      {/* Global input-required modal overlay — visible on any tab */}
-      {repoInputModal.visible && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-[#14161f] border border-yellow-500/40 rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4">
-            <div className="flex items-center gap-2 mb-4">
-              <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0" />
-              <h2 className="text-base font-bold text-white">Agent Input Required</h2>
-            </div>
-            <p className="text-sm text-[#a5b4fc] mb-4 leading-relaxed">{repoInputModal.prompt}</p>
-            <input
-              autoFocus
-              type="text"
-              value={repoInputValue}
-              onChange={(e) => setRepoInputValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleRepoInputSubmit(); }}
-              placeholder="Your answer..."
-              className="w-full bg-[#090a0f] border border-[#202433] focus:border-yellow-400 rounded-xl px-4 py-2.5 text-sm text-white placeholder-[#2d3147] focus:outline-none transition-colors mb-4"
-            />
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setRepoInputModal({ visible: false, jobId: "", prompt: "" })}
-                className="px-4 py-2 rounded-lg text-sm text-[#627094] hover:text-white transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleRepoInputSubmit}
-                disabled={!repoInputValue.trim()}
-                className="bg-yellow-500 hover:bg-yellow-400 disabled:bg-[#323647] disabled:cursor-not-allowed text-black font-semibold px-5 py-2 rounded-lg text-sm transition-colors"
-              >
-                Send
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

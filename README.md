@@ -85,3 +85,5 @@ python main.py
 
 ## 📄 License
 MIT License. Feel free to fork and build your own autonomous consultant!
+
+AI Form: https://forms.gle/WuhR57JpVFdYwLht5

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ai-consultant — Project List</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0D1117; color: #E6EDF3; font-family: 'Geist Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.5; height: 100vh; display: flex; overflow: hidden; }
+
+  /* Sidebar */
+  .sidebar { width: 240px; min-width: 240px; background: #161B22; border-right: 1px solid #21262D; display: flex; flex-direction: column; padding: 16px 0; }
+  .sidebar-logo { padding: 0 16px 16px; border-bottom: 1px solid #21262D; }
+  .sidebar-logo .logo-text { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: #E6EDF3; }
+  .sidebar-logo .logo-sub { font-size: 11px; color: #7D8590; margin-top: 2px; }
+  .sidebar-section { padding: 12px 8px 4px; }
+  .sidebar-section-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #7D8590; padding: 0 8px; margin-bottom: 4px; }
+  .sidebar-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; color: #C9D1D9; font-size: 13px; transition: background 0.1s; }
+  .sidebar-item:hover { background: #21262D; }
+  .sidebar-item.active { background: #21262D; color: #E6EDF3; }
+  .sidebar-item .dot { width: 6px; height: 6px; border-radius: 50%; background: #21262D; flex-shrink: 0; }
+  .sidebar-item .dot.running { background: #F59E0B; animation: pulse 1.5s ease-in-out infinite; }
+  .sidebar-item .dot.done { background: #10B981; }
+  .sidebar-new-project { margin: 8px; }
+  .btn-new { width: 100%; padding: 7px 12px; border-radius: 6px; background: #4F46E5; color: #fff; border: none; font-size: 13px; font-weight: 500; cursor: pointer; text-align: center; }
+  .btn-new:hover { background: #4338CA; }
+  .sidebar-spacer { flex: 1; }
+
+  /* Main */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .main-header { padding: 20px 32px 16px; border-bottom: 1px solid #21262D; display: flex; align-items: center; justify-content: space-between; }
+  .main-header h1 { font-size: 18px; font-weight: 500; letter-spacing: -0.01em; }
+  .main-header .btn-create { padding: 7px 16px; border-radius: 6px; background: #4F46E5; color: #fff; border: none; font-size: 13px; font-weight: 500; cursor: pointer; }
+  .project-list { flex: 1; overflow-y: auto; padding: 24px 32px; }
+  .project-table { width: 100%; border-collapse: collapse; }
+  .project-table th { text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #7D8590; padding: 0 12px 8px; border-bottom: 1px solid #21262D; }
+  .project-table td { padding: 12px; border-bottom: 1px solid #161B22; vertical-align: middle; }
+  .project-table tr:hover td { background: #161B22; cursor: pointer; }
+  .project-name { font-weight: 500; color: #E6EDF3; font-size: 14px; }
+  .project-date { color: #7D8590; font-size: 12px; font-family: 'Geist Mono', monospace; }
+  .project-status { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 6px; border-radius: 3px; }
+  .project-status.idle { background: #21262D; color: #7D8590; }
+  .project-status.running { background: rgba(245, 158, 11, 0.15); color: #F59E0B; }
+  .project-status.done { background: rgba(16, 185, 129, 0.15); color: #10B981; }
+  .project-tickets { font-size: 12px; color: #7D8590; font-family: 'Geist Mono', monospace; }
+  .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 60%; gap: 16px; }
+  .empty-state h2 { font-size: 18px; font-weight: 500; color: #C9D1D9; }
+  .empty-state p { font-size: 14px; color: #7D8590; max-width: 320px; text-align: center; }
+  .empty-state .btn-create-lg { padding: 10px 24px; border-radius: 6px; background: #4F46E5; color: #fff; border: none; font-size: 14px; font-weight: 500; cursor: pointer; margin-top: 8px; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+</style>
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-text">ai-consultant</div>
+      <div class="logo-sub">Spec-driven dev team</div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Projects</div>
+      <div class="sidebar-item active">
+        <span class="dot done"></span>
+        recipe-manager
+      </div>
+      <div class="sidebar-item">
+        <span class="dot running"></span>
+        auth-service
+      </div>
+      <div class="sidebar-item">
+        <span class="dot"></span>
+        dashboard-v2
+      </div>
+    </div>
+    <div class="sidebar-spacer"></div>
+    <div class="sidebar-new-project">
+      <button class="btn-new">+ New Project</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="main-header">
+      <h1>Projects</h1>
+      <button class="main-header btn-create">+ New Project</button>
+    </div>
+    <div class="project-list">
+      <table class="project-table">
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Last Activity</th>
+            <th>Status</th>
+            <th>Tickets</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><div class="project-name">recipe-manager</div></td>
+            <td><div class="project-date">2026-07-09  08:42</div></td>
+            <td><span class="project-status done">● Done</span></td>
+            <td><div class="project-tickets">7 / 7</div></td>
+          </tr>
+          <tr>
+            <td><div class="project-name">auth-service</div></td>
+            <td><div class="project-date">2026-07-09  09:14</div></td>
+            <td><span class="project-status running">● Running</span></td>
+            <td><div class="project-tickets">3 / 9</div></td>
+          </tr>
+          <tr>
+            <td><div class="project-name">dashboard-v2</div></td>
+            <td><div class="project-date">2026-07-08  17:30</div></td>
+            <td><span class="project-status idle">● Idle</span></td>
+            <td><div class="project-tickets">0 / 0</div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</body>
+</html>

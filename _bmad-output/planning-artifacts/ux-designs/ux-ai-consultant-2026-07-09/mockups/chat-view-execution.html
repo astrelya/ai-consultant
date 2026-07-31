@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ai-consultant — Chat View (Active Execution)</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0D1117; color: #E6EDF3; font-family: 'Geist Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.5; height: 100vh; display: flex; overflow: hidden; }
+
+  /* Sidebar */
+  .sidebar { width: 240px; min-width: 240px; background: #161B22; border-right: 1px solid #21262D; display: flex; flex-direction: column; padding: 16px 0; }
+  .sidebar-logo { padding: 0 16px 16px; border-bottom: 1px solid #21262D; }
+  .sidebar-logo .logo-text { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .sidebar-logo .logo-sub { font-size: 11px; color: #7D8590; margin-top: 2px; }
+  .sidebar-section { padding: 12px 8px 4px; }
+  .sidebar-section-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #7D8590; padding: 0 8px; margin-bottom: 4px; }
+  .sidebar-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; color: #C9D1D9; font-size: 13px; }
+  .sidebar-item:hover { background: #21262D; }
+  .sidebar-item.active { background: #21262D; color: #E6EDF3; }
+  .sidebar-item .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .sidebar-item .dot.running { background: #F59E0B; animation: pulse 1.5s ease-in-out infinite; }
+  .sidebar-item .dot.idle { background: #30363D; }
+  .running-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; background: rgba(245,158,11,0.15); color: #F59E0B; padding: 1px 5px; border-radius: 3px; margin-left: auto; }
+  .sidebar-spacer { flex: 1; }
+  .sidebar-new-project { margin: 8px; }
+  .btn-new { width: 100%; padding: 7px 12px; border-radius: 6px; background: #4F46E5; color: #fff; border: none; font-size: 13px; font-weight: 500; cursor: pointer; }
+
+  /* Chat layout */
+  .chat-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .chat-header { padding: 12px 20px; border-bottom: 1px solid #21262D; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  .chat-header .project-title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .chat-header .mode-badge { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; background: rgba(79,70,229,0.15); color: #818CF8; padding: 2px 7px; border-radius: 3px; }
+  .chat-header .spacer { flex: 1; }
+  .dev-view-toggle { padding: 5px 10px; border-radius: 6px; background: #21262D; border: 1px solid #30363D; color: #C9D1D9; font-size: 12px; cursor: pointer; }
+
+  /* Execution Status Block */
+  .exec-status { background: #0D1117; border: 1px solid #21262D; border-radius: 10px; margin: 12px 16px 0; flex-shrink: 0; overflow: hidden; }
+  .exec-status-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px 8px; border-bottom: 1px solid #21262D; }
+  .exec-status-header .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: #F59E0B; animation: pulse 1.2s ease-in-out infinite; }
+  .exec-status-header .running-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #F59E0B; }
+  .exec-status-header .ticket-name { font-size: 12px; color: #C9D1D9; font-family: 'Geist Mono', 'Courier New', monospace; }
+  .exec-status-header .elapsed { margin-left: auto; font-size: 12px; font-family: 'Geist Mono', monospace; color: #7D8590; }
+  .exec-queue { display: flex; gap: 6px; padding: 8px 14px; flex-wrap: wrap; border-bottom: 1px solid #21262D; }
+  .queue-item { display: flex; align-items: center; gap: 4px; font-size: 11px; font-family: 'Geist Mono', monospace; padding: 3px 7px; border-radius: 4px; }
+  .queue-item.done { color: #10B981; background: rgba(16,185,129,0.08); }
+  .queue-item.active { color: #F59E0B; background: rgba(245,158,11,0.1); font-weight: 600; }
+  .queue-item.pending { color: #64748B; background: #161B22; }
+  .log-stream { padding: 8px 14px; max-height: 110px; overflow-y: auto; font-family: 'Geist Mono', 'Courier New', monospace; font-size: 12px; line-height: 1.6; }
+  .log-line { color: #7D8590; }
+  .log-line.highlight { color: #C9D1D9; }
+  .log-line.success { color: #10B981; }
+  .log-line.warning { color: #F59E0B; }
+
+  /* Chat messages */
+  .chat-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 80%; }
+  .msg.user { align-self: flex-end; }
+  .msg.system { align-self: flex-start; }
+  .msg-bubble { padding: 10px 14px; border-radius: 8px; font-size: 14px; line-height: 1.5; }
+  .msg.user .msg-bubble { background: #1F2937; color: #E6EDF3; border-bottom-right-radius: 3px; }
+  .msg.system .msg-bubble { background: #161B22; color: #C9D1D9; border: 1px solid #21262D; border-bottom-left-radius: 3px; }
+  .msg-meta { font-size: 11px; color: #7D8590; margin-top: 4px; }
+  .msg.user .msg-meta { text-align: right; }
+
+  /* Spec preview */
+  .spec-preview { background: #0D1117; border: 1px solid #21262D; border-radius: 6px; font-family: 'Geist Mono', monospace; font-size: 12px; color: #7D8590; padding: 10px 12px; max-width: 600px; }
+  .spec-preview .spec-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .spec-preview .spec-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #7D8590; }
+  .spec-preview .spec-toggle { font-size: 11px; color: #4F46E5; cursor: pointer; border: none; background: none; padding: 0; }
+  .spec-preview .spec-line { line-height: 1.7; }
+
+  /* Chat input area */
+  .chat-input-area { padding: 12px 16px 0; flex-shrink: 0; border-top: 1px solid #21262D; }
+  .input-wrapper { display: flex; align-items: flex-end; gap: 8px; background: #161B22; border: 1px solid #30363D; border-radius: 8px; padding: 10px 12px; opacity: 0.5; }
+  .chat-textarea { flex: 1; background: transparent; border: none; outline: none; color: #E6EDF3; font-family: inherit; font-size: 14px; resize: none; max-height: 100px; }
+  .chat-textarea::placeholder { color: #7D8590; }
+  .send-btn { padding: 5px 12px; border-radius: 5px; background: #4F46E5; color: #fff; border: none; font-size: 13px; cursor: pointer; flex-shrink: 0; opacity: 0.5; }
+  .input-disabled-label { text-align: center; font-size: 11px; color: #7D8590; padding: 4px 0 8px; }
+
+  /* Cost indicator */
+  .cost-indicator { padding: 6px 16px; display: flex; gap: 24px; background: #161B22; border-top: 1px solid #21262D; flex-shrink: 0; }
+  .cost-row { font-family: 'Geist Mono', monospace; font-size: 11px; color: #7D8590; }
+  .cost-row span { color: #C9D1D9; }
+
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+</style>
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-text">ai-consultant</div>
+      <div class="logo-sub">Spec-driven dev team</div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Projects</div>
+      <div class="sidebar-item active">
+        <span class="dot running"></span>
+        auth-service
+        <span class="running-badge">Running</span>
+      </div>
+      <div class="sidebar-item">
+        <span class="dot idle"></span>
+        recipe-manager
+      </div>
+    </div>
+    <div class="sidebar-spacer"></div>
+    <div class="sidebar-new-project">
+      <button class="btn-new">+ New Project</button>
+    </div>
+  </aside>
+
+  <!-- Chat area -->
+  <div class="chat-area">
+    <div class="chat-header">
+      <span class="project-title">auth-service</span>
+      <span class="mode-badge">Executing</span>
+      <div class="spacer"></div>
+      <button class="dev-view-toggle">⊞ Dev View</button>
+    </div>
+
+    <!-- Execution Status Block -->
+    <div class="exec-status">
+      <div class="exec-status-header">
+        <span class="pulse-dot"></span>
+        <span class="running-label">Running</span>
+        <span class="ticket-name">Ticket 3 of 9 — "JWT authentication middleware"</span>
+        <span class="elapsed">05:18</span>
+      </div>
+      <div class="exec-queue">
+        <span class="queue-item done">✓ 1. Project scaffold</span>
+        <span class="queue-item done">✓ 2. PostgreSQL schema</span>
+        <span class="queue-item active">⟳ 3. JWT middleware</span>
+        <span class="queue-item pending">○ 4. User registration</span>
+        <span class="queue-item pending">○ 5. Login endpoint</span>
+        <span class="queue-item pending">○ 6. Token refresh</span>
+        <span class="queue-item pending">○ 7. Logout</span>
+        <span class="queue-item pending">○ 8. Rate limiting</span>
+        <span class="queue-item pending">○ 9. Tests</span>
+      </div>
+      <div class="log-stream">
+        <div class="log-line">Querying Context7 for fastapi…</div>
+        <div class="log-line">Context7: FastAPI 0.111 docs loaded (2,430 tokens)</div>
+        <div class="log-line">Writing backend/middleware/auth.py…</div>
+        <div class="log-line highlight">&gt; Created: backend/middleware/__init__.py</div>
+        <div class="log-line highlight">&gt; Created: backend/middleware/auth.py</div>
+        <div class="log-line">Writing tests/test_auth_middleware.py…</div>
+        <div class="log-line success">&gt; Tests: 4 passed, 0 failed</div>
+        <div class="log-line">Committing: feature-local/ticket-3…</div>
+      </div>
+    </div>
+
+    <!-- Messages -->
+    <div class="chat-messages">
+      <div class="msg system">
+        <div class="msg-bubble">Spec confirmed. Here's what we're building:</div>
+      </div>
+      <div class="msg system">
+        <div class="spec-preview">
+          <div class="spec-header">
+            <span class="spec-title">Spec — auth-service</span>
+            <button class="spec-toggle">Show full spec ↓</button>
+          </div>
+          <div class="spec-line"># Auth Service</div>
+          <div class="spec-line">JWT-based authentication for the recipe-manager</div>
+          <div class="spec-line">backend. Handles registration, login, token</div>
+          <div class="spec-line">refresh, logout, and rate limiting.</div>
+          <div class="spec-line" style="color:#4F46E5">…5 more sections</div>
+        </div>
+      </div>
+      <div class="msg user">
+        <div class="msg-bubble">generate tickets</div>
+        <div class="msg-meta">09:01</div>
+      </div>
+      <div class="msg system">
+        <div class="msg-bubble">Generated 9 tickets. Review and accept to proceed.</div>
+      </div>
+      <div class="msg user">
+        <div class="msg-bubble">Accept all — let's go</div>
+        <div class="msg-meta">09:03</div>
+      </div>
+      <div class="msg system">
+        <div class="msg-bubble">9 tickets accepted. Execution started.<br><br>I'll run them sequentially. You'll see live output above.</div>
+      </div>
+    </div>
+
+    <!-- Chat input (disabled during execution) -->
+    <div class="chat-input-area">
+      <div class="input-wrapper">
+        <textarea class="chat-textarea" placeholder="Execution in progress…" disabled rows="1"></textarea>
+        <button class="send-btn" disabled>Send</button>
+      </div>
+      <div class="input-disabled-label">Chat input disabled during execution</div>
+    </div>
+
+    <!-- Cost indicator -->
+    <div class="cost-indicator">
+      <div class="cost-row">Session: <span>14,820 tokens · $0.31</span></div>
+      <div class="cost-row">Total: <span>14,820 tokens · $0.31</span></div>
+    </div>
+  </div>
+</body>
+</html>

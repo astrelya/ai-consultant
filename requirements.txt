@@ -8,4 +8,8 @@ langchain-mcp-adapters
 requests
 pytest
 GitPython
+fastapi
+uvicorn[standard]
+asyncpg
+httpx
 

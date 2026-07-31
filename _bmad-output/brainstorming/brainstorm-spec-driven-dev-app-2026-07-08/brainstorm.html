@@ -1,0 +1,1372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brainstorm — AI Dev Team Simulator</title>
+<style>
+  /* ── RESET & BASE ──────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #07080c;
+    --bg2: #0e1016;
+    --bg3: #13151d;
+    --border: rgba(255,255,255,0.07);
+    --blue: #00c8ff;
+    --blue-dim: rgba(0,200,255,0.12);
+    --blue-glow: rgba(0,200,255,0.25);
+    --green: #00e5a0;
+    --green-dim: rgba(0,229,160,0.1);
+    --red: #ff4d6a;
+    --red-dim: rgba(255,77,106,0.1);
+    --amber: #ffb830;
+    --amber-dim: rgba(255,184,48,0.1);
+    --purple: #b06cff;
+    --purple-dim: rgba(176,108,255,0.1);
+    --text: #d0d4e0;
+    --text-muted: #5a6070;
+    --text-bright: #f0f3ff;
+    --user-tag: #00c8ff;
+    --coach-tag: #b06cff;
+    --font-mono: 'Courier New', Courier, monospace;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --radius: 8px;
+    --radius-lg: 14px;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* ── SCROLLBAR ─────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: #2a2e3a; border-radius: 3px; }
+
+  /* ── NOISE OVERLAY ─────────────────────────────────────── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    opacity: 0.025;
+    pointer-events: none;
+    z-index: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ── LAYOUT ────────────────────────────────────────────── */
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 28px;
+    position: relative;
+    z-index: 1;
+  }
+
+  section { padding: 80px 0; }
+  section + section { border-top: 1px solid var(--border); }
+
+  /* ── LABELS / TAGS ─────────────────────────────────────── */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 20px;
+    flex-shrink: 0;
+  }
+  .tag-user {
+    background: rgba(0,200,255,0.12);
+    color: var(--blue);
+    border: 1px solid rgba(0,200,255,0.25);
+  }
+  .tag-coach {
+    background: rgba(176,108,255,0.12);
+    color: var(--purple);
+    border: 1px solid rgba(176,108,255,0.25);
+  }
+  .tag-insight {
+    background: rgba(255,184,48,0.12);
+    color: var(--amber);
+    border: 1px solid rgba(255,184,48,0.25);
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block; }
+
+  /* ── SECTION HEADERS ───────────────────────────────────── */
+  .section-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+  .section-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    margin-bottom: 8px;
+    line-height: 1.2;
+  }
+  .section-sub {
+    color: var(--text-muted);
+    font-size: 14px;
+    max-width: 560px;
+    margin-bottom: 52px;
+  }
+
+  /* ──────────────────────────────────────────────────────── */
+  /*  HERO                                                    */
+  /* ──────────────────────────────────────────────────────── */
+  .hero {
+    padding: 100px 0 80px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::after {
+    content: '';
+    position: absolute;
+    top: -120px;
+    right: -200px;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(0,200,255,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-meta {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 28px;
+  }
+  .hero-date {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+  }
+  .hero-mode {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--blue);
+    background: var(--blue-dim);
+    border: 1px solid rgba(0,200,255,0.2);
+    padding: 2px 10px;
+    border-radius: 4px;
+    letter-spacing: 0.08em;
+  }
+  .hero-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .hero h1 {
+    font-size: clamp(2.2rem, 5vw, 3.6rem);
+    font-weight: 800;
+    color: var(--text-bright);
+    line-height: 1.1;
+    margin-bottom: 24px;
+    letter-spacing: -0.02em;
+  }
+  .hero h1 em {
+    font-style: normal;
+    background: linear-gradient(90deg, var(--blue), var(--green));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero-goal {
+    max-width: 640px;
+    color: var(--text-muted);
+    font-size: 15px;
+    line-height: 1.7;
+    border-left: 2px solid var(--blue);
+    padding-left: 20px;
+    margin-bottom: 44px;
+  }
+  .hero-techniques {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .technique-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    letter-spacing: 0.04em;
+    transition: border-color 0.2s;
+  }
+  .technique-chip:hover { border-color: rgba(255,255,255,0.15); color: var(--text); }
+  .technique-chip .num {
+    color: var(--blue);
+    font-weight: 700;
+  }
+
+  /* ──────────────────────────────────────────────────────── */
+  /*  TECHNIQUE 1 — REVERSE BRAINSTORMING                    */
+  /* ──────────────────────────────────────────────────────── */
+  .reverse-grid {
+    display: grid;
+    gap: 0;
+  }
+  .reverse-row {
+    display: grid;
+    grid-template-columns: 1fr 44px 1fr;
+    gap: 0;
+    align-items: stretch;
+    margin-bottom: 12px;
+  }
+  .reverse-row:last-child { margin-bottom: 0; }
+
+  .rev-card {
+    padding: 18px 20px;
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .rev-fail {
+    background: linear-gradient(135deg, rgba(255,77,106,0.08), rgba(255,77,106,0.03));
+    border: 1px solid rgba(255,77,106,0.2);
+    border-right: none;
+    border-radius: var(--radius) 0 0 var(--radius);
+  }
+  .rev-invert {
+    background: linear-gradient(135deg, rgba(0,229,160,0.06), rgba(0,229,160,0.02));
+    border: 1px solid rgba(0,229,160,0.2);
+    border-left: none;
+    border-radius: 0 var(--radius) var(--radius) 0;
+  }
+  .rev-connector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg3);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    font-size: 18px;
+    position: relative;
+  }
+  .rev-connector::after {
+    content: '→';
+    color: var(--text-muted);
+    font-size: 16px;
+  }
+  .rev-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .rev-fail .rev-label { color: var(--red); }
+  .rev-invert .rev-label { color: var(--green); }
+  .rev-text { font-size: 13.5px; color: var(--text); line-height: 1.5; }
+  .rev-principle {
+    font-size: 12px;
+    color: var(--green);
+    font-family: var(--font-mono);
+    margin-top: 4px;
+  }
+
+  .reverse-header-row {
+    display: grid;
+    grid-template-columns: 1fr 44px 1fr;
+    gap: 0;
+    margin-bottom: 20px;
+  }
+  .col-header {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .col-header.fail-col { color: var(--red); }
+  .col-header.inv-col { color: var(--green); text-align: right; }
+  .insight-box {
+    margin-top: 40px;
+    background: var(--amber-dim);
+    border: 1px solid rgba(255,184,48,0.2);
+    border-radius: var(--radius-lg);
+    padding: 24px 28px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  .insight-icon {
+    font-size: 22px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .insight-content {}
+  .insight-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 6px;
+  }
+  .insight-text { font-size: 14px; color: var(--text); line-height: 1.6; }
+  .insight-list {
+    list-style: none;
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .insight-list li {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: rgba(255,184,48,0.1);
+    border: 1px solid rgba(255,184,48,0.2);
+    color: var(--amber);
+    padding: 4px 10px;
+    border-radius: 4px;
+  }
+
+  /* ──────────────────────────────────────────────────────── */
+  /*  TECHNIQUE 2 — PROVOCATION                              */
+  /* ──────────────────────────────────────────────────────── */
+  .prov-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .prov-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    transition: border-color 0.3s, transform 0.3s;
+  }
+  .prov-card:hover {
+    border-color: rgba(176,108,255,0.3);
+    transform: translateX(4px);
+  }
+  .prov-top {
+    padding: 22px 26px 16px;
+    border-bottom: 1px dashed var(--border);
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  .prov-glyph {
+    font-size: 24px;
+    flex-shrink: 0;
+    margin-top: 3px;
+  }
+  .prov-top-content {}
+  .prov-sublabel {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255,77,106,0.7);
+    margin-bottom: 6px;
+  }
+  .prov-statement {
+    font-size: 15.5px;
+    font-style: italic;
+    color: #e0c0ff;
+    line-height: 1.5;
+  }
+  .prov-bottom {
+    padding: 18px 26px 20px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    background: rgba(176,108,255,0.04);
+  }
+  .prov-arrow {
+    font-size: 20px;
+    color: var(--purple);
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .prov-bottom-content {}
+  .prov-principle-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--purple);
+    margin-bottom: 6px;
+  }
+  .prov-principle-text {
+    font-size: 14px;
+    color: var(--text);
+    line-height: 1.6;
+  }
+  .prov-card .prov-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  /* ──────────────────────────────────────────────────────── */
+  /*  TECHNIQUE 3 — QUESTION STORMING                        */
+  /* ──────────────────────────────────────────────────────── */
+  .q-storm-container {
+    position: relative;
+    min-height: 460px;
+  }
+  .q-insight-strip {
+    background: rgba(0,200,255,0.05);
+    border: 1px solid rgba(0,200,255,0.15);
+    border-radius: var(--radius-lg);
+    padding: 22px 26px;
+    margin-bottom: 36px;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+  .q-insight-icon { font-size: 20px; flex-shrink: 0; margin-top: 2px; }
+  .q-insight-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 6px;
+  }
+  .q-insight-text { font-size: 14px; color: var(--text); line-height: 1.6; }
+
+  .q-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+  }
+  .q-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 22px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    position: relative;
+    transition: all 0.25s;
+    cursor: default;
+    margin-bottom: -1px;
+  }
+  .q-card:first-child { border-radius: var(--radius) var(--radius) 0 0; }
+  .q-card:last-child { border-radius: 0 0 var(--radius) var(--radius); margin-bottom: 0; }
+  .q-card:only-child { border-radius: var(--radius); }
+  .q-card:hover {
+    z-index: 10;
+    background: var(--bg2);
+    border-color: rgba(0,200,255,0.25);
+    transform: translateX(6px);
+    box-shadow: -4px 0 0 var(--blue), 0 4px 24px rgba(0,0,0,0.5);
+    margin-bottom: 0;
+  }
+  .q-num {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    min-width: 22px;
+    padding-top: 2px;
+    flex-shrink: 0;
+  }
+  .q-mark {
+    color: var(--blue);
+    font-size: 22px;
+    font-weight: 300;
+    flex-shrink: 0;
+    line-height: 1;
+    padding-top: 0px;
+  }
+  .q-content { flex: 1; }
+  .q-text { font-size: 14px; color: var(--text); line-height: 1.5; }
+  .q-tag-row { display: flex; gap: 8px; margin-top: 8px; }
+
+  /* ──────────────────────────────────────────────────────── */
+  /*  TECHNIQUE 4 — SCENARIO CROSS                           */
+  /* ──────────────────────────────────────────────────────── */
+  .scenario-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+  .axis-label-top {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    text-align: center;
+    margin-bottom: 8px;
+  }
+  .axis-label-top span { color: var(--green); }
+  .matrix-outer {
+    display: grid;
+    grid-template-columns: 36px 1fr 1fr;
+    grid-template-rows: 1fr 1fr 36px;
+    gap: 0;
+    width: 100%;
+    max-width: 720px;
+  }
+  .axis-side {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    grid-row: 1 / 3;
+    grid-column: 1;
+  }
+  .axis-side span { color: var(--blue); }
+  .q-cell {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 24px 22px;
+    position: relative;
+    transition: background 0.25s, border-color 0.25s;
+    min-height: 160px;
+  }
+  .q-cell:hover { background: var(--bg3); border-color: rgba(255,255,255,0.12); }
+  .q-cell.top-left { border-radius: var(--radius-lg) 0 0 0; }
+  .q-cell.top-right { border-radius: 0 var(--radius-lg) 0 0; }
+  .q-cell.bot-left { border-radius: 0 0 0 var(--radius-lg); }
+  .q-cell.bot-right { border-radius: 0 0 var(--radius-lg) 0; border-color: rgba(0,200,255,0.3); background: rgba(0,200,255,0.03); }
+  .q-cell.bot-right::after {
+    content: '★ PRIMARY BET';
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: var(--blue);
+    background: var(--blue-dim);
+    border: 1px solid rgba(0,200,255,0.2);
+    padding: 2px 8px;
+    border-radius: 3px;
+  }
+  .cell-quadrant {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+  .cell-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-bright);
+    margin-bottom: 8px;
+    line-height: 1.3;
+  }
+  .cell-desc { font-size: 12.5px; color: var(--text-muted); line-height: 1.55; }
+  .axis-bottom {
+    grid-column: 2 / 4;
+    grid-row: 3;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0 0;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .axis-bottom .ax-start { text-align: left; }
+  .axis-bottom .ax-label { color: var(--green); text-align: center; }
+  .axis-bottom .ax-end { text-align: right; }
+  .axis-side-top { color: var(--blue); }
+  .axis-side-bot { color: var(--text-muted); }
+
+  .scenario-constant {
+    margin-top: 36px;
+    max-width: 720px;
+    background: linear-gradient(135deg, rgba(0,200,255,0.07), rgba(0,229,160,0.04));
+    border: 1px solid rgba(0,200,255,0.2);
+    border-radius: var(--radius-lg);
+    padding: 22px 28px;
+    text-align: center;
+  }
+  .scenario-constant-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 8px;
+  }
+  .scenario-constant-text {
+    font-size: 15px;
+    color: var(--text-bright);
+    font-style: italic;
+    line-height: 1.5;
+  }
+  .scenario-constant-text strong { color: var(--green); font-style: normal; }
+
+  /* ──────────────────────────────────────────────────────── */
+  /*  SYNTHESIS                                               */
+  /* ──────────────────────────────────────────────────────── */
+  .synthesis {
+    background: linear-gradient(180deg, var(--bg) 0%, #090b10 100%);
+    padding: 100px 0 120px;
+    position: relative;
+    overflow: hidden;
+  }
+  .synthesis::before {
+    content: '';
+    position: absolute;
+    bottom: -100px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 800px;
+    height: 400px;
+    background: radial-gradient(ellipse at center, rgba(0,200,255,0.05) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .vision-statement {
+    text-align: center;
+    max-width: 700px;
+    margin: 0 auto 64px;
+  }
+  .vision-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+  }
+  .vision-title {
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    font-weight: 800;
+    color: var(--text-bright);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin-bottom: 16px;
+  }
+  .vision-title em {
+    font-style: normal;
+    background: linear-gradient(90deg, var(--blue), var(--purple), var(--green));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .vision-desc {
+    color: var(--text-muted);
+    font-size: 15px;
+    line-height: 1.7;
+    font-style: italic;
+  }
+  .pillars {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    position: relative;
+    z-index: 1;
+  }
+  .pillar {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 32px 26px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.3s, border-color 0.3s;
+  }
+  .pillar:hover { transform: translateY(-4px); }
+  .pillar::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+  }
+  .pillar-1::before { background: linear-gradient(90deg, var(--blue), transparent); border-color: rgba(0,200,255,0.2); }
+  .pillar-2::before { background: linear-gradient(90deg, var(--green), transparent); border-color: rgba(0,229,160,0.2); }
+  .pillar-3::before { background: linear-gradient(90deg, var(--purple), transparent); border-color: rgba(176,108,255,0.2); }
+  .pillar-1:hover { border-color: rgba(0,200,255,0.2); }
+  .pillar-2:hover { border-color: rgba(0,229,160,0.2); }
+  .pillar-3:hover { border-color: rgba(176,108,255,0.2); }
+  .pillar-num {
+    font-family: var(--font-mono);
+    font-size: 36px;
+    font-weight: 800;
+    line-height: 1;
+    opacity: 0.12;
+    position: absolute;
+    top: 20px;
+    right: 22px;
+  }
+  .pillar-1 .pillar-num { color: var(--blue); }
+  .pillar-2 .pillar-num { color: var(--green); }
+  .pillar-3 .pillar-num { color: var(--purple); }
+  .pillar-icon { font-size: 32px; }
+  .pillar-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-bright);
+    line-height: 1.3;
+  }
+  .pillar-1 .pillar-name { color: var(--blue); }
+  .pillar-2 .pillar-name { color: var(--green); }
+  .pillar-3 .pillar-name { color: var(--purple); }
+  .pillar-desc { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+  .pillar-sources {
+    margin-top: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .source-chip {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    border: 1px solid;
+  }
+  .pillar-1 .source-chip { border-color: rgba(0,200,255,0.2); color: rgba(0,200,255,0.6); background: rgba(0,200,255,0.05); }
+  .pillar-2 .source-chip { border-color: rgba(0,229,160,0.2); color: rgba(0,229,160,0.6); background: rgba(0,229,160,0.05); }
+  .pillar-3 .source-chip { border-color: rgba(176,108,255,0.2); color: rgba(176,108,255,0.6); background: rgba(176,108,255,0.05); }
+
+  /* ──────────────────────────────────────────────────────── */
+  /*  FOOTER                                                  */
+  /* ──────────────────────────────────────────────────────── */
+  .footer {
+    border-top: 1px solid var(--border);
+    padding: 32px 0;
+  }
+  .footer-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .footer-left {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.08em;
+  }
+  .footer-right {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .legend-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+  .legend-dot.user { background: var(--blue); }
+  .legend-dot.coach { background: var(--purple); }
+  .legend-dot.insight { background: var(--amber); }
+
+  /* ── NAV ───────────────────────────────────────────────── */
+  .sticky-nav {
+    position: fixed;
+    top: 20px;
+    right: 24px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-end;
+  }
+  .nav-dot-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    opacity: 0.4;
+    transition: opacity 0.2s;
+    text-decoration: none;
+  }
+  .nav-dot-item:hover, .nav-dot-item.active { opacity: 1; }
+  .nav-dot-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    background: var(--bg3);
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    display: none;
+    white-space: nowrap;
+  }
+  .nav-dot-item:hover .nav-dot-label { display: block; }
+  .nav-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    border: 1px solid transparent;
+    flex-shrink: 0;
+    transition: background 0.2s, transform 0.2s;
+  }
+  .nav-dot-item.active .nav-dot {
+    background: var(--blue);
+    transform: scale(1.3);
+  }
+
+  /* ── RESPONSIVE ────────────────────────────────────────── */
+  @media (max-width: 720px) {
+    .pillars { grid-template-columns: 1fr; }
+    .reverse-row { grid-template-columns: 1fr; }
+    .rev-connector { display: none; }
+    .rev-fail, .rev-invert { border-radius: var(--radius); border: 1px solid; margin-bottom: 8px; }
+    .sticky-nav { display: none; }
+    .matrix-outer { grid-template-columns: 28px 1fr 1fr; }
+    .hero h1 { font-size: 2rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- STICKY NAV -->
+<nav class="sticky-nav" id="sticky-nav">
+  <a class="nav-dot-item" href="#hero"><span class="nav-dot-label">Overview</span><span class="nav-dot"></span></a>
+  <a class="nav-dot-item" href="#reverse"><span class="nav-dot-label">Reverse Brainstorm</span><span class="nav-dot"></span></a>
+  <a class="nav-dot-item" href="#provocation"><span class="nav-dot-label">Provocation</span><span class="nav-dot"></span></a>
+  <a class="nav-dot-item" href="#questions"><span class="nav-dot-label">Question Storming</span><span class="nav-dot"></span></a>
+  <a class="nav-dot-item" href="#scenario"><span class="nav-dot-label">Scenario Cross</span><span class="nav-dot"></span></a>
+  <a class="nav-dot-item" href="#synthesis"><span class="nav-dot-label">Synthesis</span><span class="nav-dot"></span></a>
+</nav>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!--  HERO                                                    -->
+<!-- ════════════════════════════════════════════════════════ -->
+<section class="hero" id="hero">
+  <div class="wrap">
+    <div class="hero-meta">
+      <span class="hero-date">2026-07-08</span>
+      <span class="hero-mode">mode: creative partner</span>
+    </div>
+    <div class="hero-label">Brainstorming Session</div>
+    <h1>Transform the AI Consultant<br>into an <em>AI Dev Team Simulator</em></h1>
+    <p class="hero-goal">
+      End-to-end pipeline: spec creation with clarifying dialogue → user stories → sprint &amp; Jira tickets (with project name in title) → implementation, optimized with BMad and codegraph. The user sits in the PM seat. The agents do the work.
+    </p>
+    <div class="hero-techniques">
+      <div class="technique-chip"><span class="num">01</span> Reverse Brainstorming</div>
+      <div class="technique-chip"><span class="num">02</span> Provocation Technique</div>
+      <div class="technique-chip"><span class="num">03</span> Question Storming</div>
+      <div class="technique-chip"><span class="num">04</span> Scenario Cross</div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!--  01 — REVERSE BRAINSTORMING                             -->
+<!-- ════════════════════════════════════════════════════════ -->
+<section id="reverse">
+  <div class="wrap">
+    <div class="section-eyebrow">Technique 01</div>
+    <h2 class="section-title">Reverse Brainstorming</h2>
+    <p class="section-sub">
+      Start by designing the worst possible AI dev tool imaginable. Each failure mode, when flipped, reveals a concrete design requirement.
+    </p>
+
+    <div class="reverse-header-row">
+      <div class="col-header fail-col">▼ Failure Mode <span class="tag tag-user" style="margin-left:8px;"><span class="dot"></span> user</span></div>
+      <div></div>
+      <div class="col-header inv-col">Design Requirement ▲</div>
+    </div>
+
+    <div class="reverse-grid">
+
+      <div class="reverse-row">
+        <div class="rev-card rev-fail">
+          <span class="rev-label">Failure</span>
+          <p class="rev-text">Implement all tickets <strong>in parallel</strong> → merge conflict hell the user can't resolve because they didn't write the code.</p>
+        </div>
+        <div class="rev-connector"></div>
+        <div class="rev-card rev-invert">
+          <span class="rev-label">Requirement</span>
+          <p class="rev-text">Sequential execution — one ticket at a time, with deterministic ordering.</p>
+          <p class="rev-principle">→ sequential execution</p>
+        </div>
+      </div>
+
+      <div class="reverse-row">
+        <div class="rev-card rev-fail">
+          <span class="rev-label">Failure</span>
+          <p class="rev-text">Complete <strong>black box</strong> — no visibility into agent activity. 3 minutes of silence, then just "success".</p>
+        </div>
+        <div class="rev-connector"></div>
+        <div class="rev-card rev-invert">
+          <span class="rev-label">Requirement</span>
+          <p class="rev-text">Live thought log — the user sees exactly what the agent is doing, at every step.</p>
+          <p class="rev-principle">→ live thought log</p>
+        </div>
+      </div>
+
+      <div class="reverse-row">
+        <div class="rev-card rev-fail">
+          <span class="rev-label">Failure</span>
+          <p class="rev-text">Sub-agents have <strong>no cross-ticket context</strong> — each confidently solves its task in isolation, producing locally correct but globally broken code.</p>
+        </div>
+        <div class="rev-connector"></div>
+        <div class="rev-card rev-invert">
+          <span class="rev-label">Requirement</span>
+          <p class="rev-text">Persistent cross-ticket memory — agents share a growing understanding of the codebase across the entire sprint.</p>
+          <p class="rev-principle">→ persistent cross-ticket memory</p>
+        </div>
+      </div>
+
+      <div class="reverse-row">
+        <div class="rev-card rev-fail">
+          <span class="rev-label">Failure</span>
+          <p class="rev-text"><strong>Interface overload</strong> — too much information surfaced at once. Not user-friendly.</p>
+        </div>
+        <div class="rev-connector"></div>
+        <div class="rev-card rev-invert">
+          <span class="rev-label">Requirement</span>
+          <p class="rev-text">Progressive disclosure UI — surface only what the user needs at each stage of the workflow.</p>
+          <p class="rev-principle">→ progressive disclosure UI</p>
+        </div>
+      </div>
+
+      <div class="reverse-row">
+        <div class="rev-card rev-fail">
+          <span class="rev-label">Failure</span>
+          <p class="rev-text">Agent asks for the <strong>repo name repeatedly</strong> for the same ticket batch — no session memory for basic config.</p>
+        </div>
+        <div class="rev-connector"></div>
+        <div class="rev-card rev-invert">
+          <span class="rev-label">Requirement</span>
+          <p class="rev-text">One-time project config — enter project name, repo, and preferences once. The app remembers.</p>
+          <p class="rev-principle">→ one-time project config</p>
+        </div>
+      </div>
+
+      <div class="reverse-row">
+        <div class="rev-card rev-fail">
+          <span class="rev-label">Failure</span>
+          <p class="rev-text">Tester agent <strong>reports success but did nothing</strong> — ghost validation with no actual test execution.</p>
+        </div>
+        <div class="rev-connector"></div>
+        <div class="rev-card rev-invert">
+          <span class="rev-label">Requirement</span>
+          <p class="rev-text">Mandatory test artifacts — every ticket must produce verifiable test output before it's marked done.</p>
+          <p class="rev-principle">→ mandatory test artifacts</p>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="insight-box">
+      <div class="insight-icon">💡</div>
+      <div class="insight-content">
+        <div class="insight-label">Insight</div>
+        <p class="insight-text">6 core design requirements extracted from the failure map:</p>
+        <ul class="insight-list">
+          <li>Sequential Execution</li>
+          <li>Live Thought Log</li>
+          <li>Persistent Cross-Ticket Memory</li>
+          <li>Progressive Disclosure UI</li>
+          <li>One-Time Project Config</li>
+          <li>Mandatory Test Artifacts</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!--  02 — PROVOCATION TECHNIQUE                             -->
+<!-- ════════════════════════════════════════════════════════ -->
+<section id="provocation">
+  <div class="wrap">
+    <div class="section-eyebrow">Technique 02</div>
+    <h2 class="section-title">Provocation Technique</h2>
+    <p class="section-sub">
+      State something deliberately absurd. Sit with it. Mine the principle hiding underneath the impossibility.
+    </p>
+
+    <div class="prov-cards">
+
+      <div class="prov-card">
+        <div class="prov-top">
+          <div class="prov-glyph">💣</div>
+          <div class="prov-top-content">
+            <div class="prov-sublabel">Provocation Statement</div>
+            <p class="prov-statement">"Generated code is always perfect — zero flaws, always using the latest frameworks and libraries."</p>
+            <div class="prov-meta">
+              <span class="tag tag-user"><span class="dot"></span> user</span>
+            </div>
+          </div>
+        </div>
+        <div class="prov-bottom">
+          <div class="prov-arrow">⇒</div>
+          <div class="prov-bottom-content">
+            <div class="prov-principle-label">Principle Mined</div>
+            <p class="prov-principle-text"><strong>Active dependency grounding via Context7.</strong> Since generated code can't be perfect, the system must actively verify that every library reference is real, current, and compatible — before it ever writes a line.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="prov-card">
+        <div class="prov-top">
+          <div class="prov-glyph">🤑</div>
+          <div class="prov-top-content">
+            <div class="prov-sublabel">Provocation Statement</div>
+            <p class="prov-statement">"Zero human interaction anywhere — give it a spec, get a finished app, make millions."</p>
+            <div class="prov-meta">
+              <span class="tag tag-user"><span class="dot"></span> user</span>
+            </div>
+          </div>
+        </div>
+        <div class="prov-bottom">
+          <div class="prov-arrow">⇒</div>
+          <div class="prov-bottom-content">
+            <div class="prov-principle-label">Principle Mined</div>
+            <p class="prov-principle-text"><strong>Exception-driven autonomy with confidence thresholds.</strong> Full automation is the aspiration, not the default. The agent works autonomously at high confidence — and surfaces to the PM only when it genuinely doesn't know. Human input is reserved, not squandered.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="prov-card">
+        <div class="prov-top">
+          <div class="prov-glyph">🧠</div>
+          <div class="prov-top-content">
+            <div class="prov-sublabel">Provocation Statement</div>
+            <p class="prov-statement">"The app has no memory — every session starts completely fresh, no project history, no previous tickets, no codebase knowledge."</p>
+            <div class="prov-meta">
+              <span class="tag tag-coach"><span class="dot"></span> coach</span>
+            </div>
+          </div>
+        </div>
+        <div class="prov-bottom">
+          <div class="prov-arrow">⇒</div>
+          <div class="prov-bottom-content">
+            <div class="prov-principle-label">Principle Mined</div>
+            <p class="prov-principle-text"><strong>Living project memory store that grows across sessions.</strong> The value of the system compounds over time. Every ticket completed, every decision made, every edge case encountered becomes part of a persistent project brain — a context layer that makes each session smarter than the last.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!--  03 — QUESTION STORMING                                 -->
+<!-- ════════════════════════════════════════════════════════ -->
+<section id="questions">
+  <div class="wrap">
+    <div class="section-eyebrow">Technique 03</div>
+    <h2 class="section-title">Question Storming</h2>
+    <p class="section-sub">
+      No answers yet. Just the right questions — asked to pressure the concept until it reveals its shape.
+    </p>
+
+    <div class="q-insight-strip">
+      <div class="q-insight-icon">🎯</div>
+      <div>
+        <div class="q-insight-label">Core Vision Surfaced</div>
+        <p class="q-insight-text">AI dev team simulator — user is the <strong>project manager</strong>, spec is the kickoff meeting, Jira tickets are task assignments to autonomous agent team members.</p>
+      </div>
+    </div>
+
+    <div class="q-stack">
+
+      <div class="q-card">
+        <span class="q-num">01</span>
+        <span class="q-mark">?</span>
+        <div class="q-content">
+          <p class="q-text">Who is the app designed for?</p>
+          <div class="q-tag-row">
+            <span class="tag tag-user"><span class="dot"></span> user</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="q-card">
+        <span class="q-num">02</span>
+        <span class="q-mark">?</span>
+        <div class="q-content">
+          <p class="q-text">Is there a codebase view of the project being developed inside the app?</p>
+          <div class="q-tag-row">
+            <span class="tag tag-user"><span class="dot"></span> user</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="q-card">
+        <span class="q-num">03</span>
+        <span class="q-mark">?</span>
+        <div class="q-content">
+          <p class="q-text">Can the user intervene in the code during development if something goes wrong?</p>
+          <div class="q-tag-row">
+            <span class="tag tag-user"><span class="dot"></span> user</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="q-card">
+        <span class="q-num">04</span>
+        <span class="q-mark">?</span>
+        <div class="q-content">
+          <p class="q-text">Is the app just a chatbot with no file view, or something more like an IDE?</p>
+          <div class="q-tag-row">
+            <span class="tag tag-user"><span class="dot"></span> user</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="q-card">
+        <span class="q-num">05</span>
+        <span class="q-mark">?</span>
+        <div class="q-content">
+          <p class="q-text">Is the purpose to have a complete AI dev team ready for any project, with the user acting as project manager?</p>
+          <div class="q-tag-row">
+            <span class="tag tag-user"><span class="dot"></span> user</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!--  04 — SCENARIO CROSS                                    -->
+<!-- ════════════════════════════════════════════════════════ -->
+<section id="scenario">
+  <div class="wrap">
+    <div class="section-eyebrow">Technique 04</div>
+    <h2 class="section-title">Scenario Cross</h2>
+    <p class="section-sub">
+      Map the tool strategy across four uncertain futures. What holds regardless of how the world turns?
+    </p>
+
+    <div class="scenario-wrap">
+      <div class="axis-label-top"><span>AI Capability</span></div>
+      <div class="matrix-outer">
+
+        <div class="axis-side">
+          <span class="axis-side-top">↑ Team</span>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+          <span>User Adoption</span>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+          <span class="axis-side-bot">Solo ↓</span>
+        </div>
+
+        <!-- Top-left: High Team Adoption, Low AI Capability -->
+        <div class="q-cell top-left">
+          <div class="cell-quadrant">Team + Low AI</div>
+          <div class="cell-title">The Reliable Junior</div>
+          <p class="cell-desc">Handles simple, well-scoped Jira tickets within an existing team. Jira integration makes it slot in as a new team member — without needing high AI sophistication.</p>
+        </div>
+
+        <!-- Top-right: High Team Adoption, High AI Capability -->
+        <div class="q-cell top-right">
+          <div class="cell-quadrant">Team + High AI</div>
+          <div class="cell-title">The Autonomous Team Member</div>
+          <p class="cell-desc">A fully capable agent that handles complex cross-cutting tickets, integrates into standups via Jira, and requires minimal human handholding. The app's ceiling.</p>
+        </div>
+
+        <!-- Bottom-left: Solo, Low AI Capability -->
+        <div class="q-cell bot-left">
+          <div class="cell-quadrant">Solo + Low AI</div>
+          <div class="cell-title">The Automation Assistant</div>
+          <p class="cell-desc">Helps a solo dev generate boilerplate, scaffold features, and manage tickets — even at lower AI quality. Interface clarity matters most here.</p>
+        </div>
+
+        <!-- Bottom-right: Solo, High AI Capability — PRIMARY BET -->
+        <div class="q-cell bot-right">
+          <div class="cell-quadrant">Solo + High AI</div>
+          <div class="cell-title">Dev Team in a Box</div>
+          <p class="cell-desc">The primary target: a solo developer with a spec, no team, and an AI agent squad that handles implementation end-to-end. The user is the only human in the loop.</p>
+        </div>
+
+        <div class="axis-bottom">
+          <span class="ax-start">Low</span>
+          <span class="ax-label">AI Capability →</span>
+          <span class="ax-end">High</span>
+        </div>
+
+      </div>
+
+      <div class="scenario-constant">
+        <div class="scenario-constant-label">The AI-Proof Constant</div>
+        <p class="scenario-constant-text">
+          The design bet that survives all four futures: <strong>interface quality</strong>.<br>
+          Easy access for every type of user is the most important thing — regardless of AI capability.
+        </p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<!--  SYNTHESIS                                              -->
+<!-- ════════════════════════════════════════════════════════ -->
+<section class="synthesis" id="synthesis">
+  <div class="wrap">
+    <div class="vision-statement">
+      <div class="vision-label">Final Synthesis</div>
+      <h2 class="vision-title">What We Built<br>in This Room</h2>
+      <p class="vision-desc">
+        Four techniques. One emerging product. The session converged on a single coherent bet — and three non-negotiable pillars that define how to win it.
+      </p>
+    </div>
+
+    <div class="pillars">
+
+      <div class="pillar pillar-1">
+        <div class="pillar-num">01</div>
+        <div class="pillar-icon">🖥️</div>
+        <div class="pillar-name">Interface-First Design as the AI-Proof Constant</div>
+        <p class="pillar-desc">
+          The interface is the one thing that doesn't get disrupted when AI capability shifts. Progressive disclosure, clean UX, and easy access for every user type is the strategic moat — not the AI underneath.
+        </p>
+        <div class="pillar-sources">
+          <span class="source-chip">Scenario Cross</span>
+          <span class="source-chip">Reverse Brainstorm: UI Overload</span>
+        </div>
+      </div>
+
+      <div class="pillar pillar-2">
+        <div class="pillar-num">02</div>
+        <div class="pillar-icon">⚙️</div>
+        <div class="pillar-name">Sequential Execution with Persistent Cross-Ticket Memory</div>
+        <p class="pillar-desc">
+          Agents work in order, share context, and grow smarter as the sprint progresses. The project brain accumulates across sessions — transforming every completed ticket into institutional knowledge for the next.
+        </p>
+        <div class="pillar-sources">
+          <span class="source-chip">Reverse Brainstorm: Parallel Hell</span>
+          <span class="source-chip">Provocation: No Memory</span>
+        </div>
+      </div>
+
+      <div class="pillar pillar-3">
+        <div class="pillar-num">03</div>
+        <div class="pillar-icon">🎛️</div>
+        <div class="pillar-name">Exception-Driven Autonomy with Live Transparency</div>
+        <p class="pillar-desc">
+          Agents run autonomously at high confidence and surface to the PM only at genuine decision points. Every step is visible in the thought log. Autonomy is earned, not assumed — and always observable.
+        </p>
+        <div class="pillar-sources">
+          <span class="source-chip">Provocation: Zero Human Input</span>
+          <span class="source-chip">Reverse Brainstorm: Black Box</span>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-inner">
+      <div class="footer-left">
+        brainstorm-spec-driven-dev-app · 2026-07-08 · ai-consultant project
+      </div>
+      <div class="footer-right">
+        <div class="legend-item"><span class="legend-dot user"></span> User idea</div>
+        <div class="legend-item"><span class="legend-dot coach"></span> Coach idea</div>
+        <div class="legend-item"><span class="legend-dot insight"></span> Session insight</div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // ── ACTIVE NAV DOT ───────────────────────────────────────
+  (function() {
+    const sections = ['hero','reverse','provocation','questions','scenario','synthesis'];
+    const dots = document.querySelectorAll('.nav-dot-item');
+
+    function getActive() {
+      const scrollY = window.scrollY + window.innerHeight * 0.35;
+      let active = sections[0];
+      for (const id of sections) {
+        const el = document.getElementById(id);
+        if (el && el.offsetTop <= scrollY) active = id;
+      }
+      return active;
+    }
+
+    function updateNav() {
+      const active = getActive();
+      dots.forEach((dot, i) => {
+        dot.classList.toggle('active', sections[i] === active);
+      });
+    }
+
+    window.addEventListener('scroll', updateNav, { passive: true });
+    updateNav();
+  })();
+
+  // ── ENTRANCE ANIMATIONS ──────────────────────────────────
+  (function() {
+    if (!window.IntersectionObserver) return;
+    const style = document.createElement('style');
+    style.textContent = `
+      .animate-in { opacity: 0; transform: translateY(20px); transition: opacity 0.5s ease, transform 0.5s ease; }
+      .animate-in.visible { opacity: 1; transform: none; }
+    `;
+    document.head.appendChild(style);
+
+    const targets = document.querySelectorAll('.rev-row, .prov-card, .q-card, .q-cell, .pillar, .insight-box, .scenario-constant, .q-insight-strip');
+    targets.forEach((el, i) => {
+      el.classList.add('animate-in');
+      el.style.transitionDelay = (i % 6) * 0.06 + 's';
+    });
+
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
+    }, { threshold: 0.1 });
+
+    targets.forEach(el => obs.observe(el));
+  })();
+</script>
+</body>
+</html>

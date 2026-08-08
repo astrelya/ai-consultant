@@ -7,7 +7,7 @@ import re
 from typing import List, Dict
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.tools import StructuredTool
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 from git import Repo
 
 from agents.local_developer_agent import LocalDeveloperAgent
@@ -67,14 +67,15 @@ class SupervisorAgent:
             dev_result = await self.remote_developer.implement_feature(story_details, workspace_path)
             
         print(f"[Supervisor] Developer finished with status: {dev_result.get('status')}")
-        
         if dev_result.get('status') != 'success':
+            print(f"[Supervisor] Developer failure details: {dev_result.get('message', 'no message')}")
             return "Development phase failed."
+        print(f"[Supervisor] Branch: {dev_result.get('branch')} | PR: {dev_result.get('pr_url', 'none')}")
 
         # 4. Delegate to Tester Agent for Unit Tests
         print("[Supervisor] Delegating to Tester Agent...")
         test_result = self.tester.write_and_run_tests(story_details, dev_result.get('code_files', []), workspace_path)
-        print(f"[Supervisor] Tester finished with status: {test_result.get('status')}")
+        print(f"[Supervisor] Tester finished with status: {test_result.get('status')} | {test_result.get('message', '')}")
         
         # Transition to In Review
         await self.ticket_manager.transition_ticket(issue_identifier, "In Review")
@@ -260,7 +261,7 @@ class SupervisorAgent:
         ] + manager.doc_tools
         
         # Create an intelligent routing agent bound with the tools
-        router_agent = create_react_agent(self.llm, supervisor_tools)
+        router_agent = create_agent(self.llm, supervisor_tools)
         
         # Prepare messages including history
         messages = [("system", "You are the orchestrating supervisor. You have access to project management, code implementation, and technical documentation tools (Context7). If a user asks a technical question about a library like Javelit, use Context7 to find the answer.")]

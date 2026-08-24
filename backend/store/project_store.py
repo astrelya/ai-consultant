@@ -62,3 +62,59 @@ async def save_generated_tickets(project_id: str, tickets: list[dict]) -> list[d
             project_id
         )
     return json.loads(record["ticket_history"]) if record and record["ticket_history"] else []
+
+
+async def update_ticket_status(project_id: str, ticket_id: str, status: str) -> None:
+    """Update the status field of a specific ticket in ticket_history JSONB array."""
+    pool = database.get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE projects
+            SET ticket_history = (
+                SELECT jsonb_agg(
+                    CASE WHEN t->>'id' = $2
+                    THEN t || jsonb_build_object('status', $3)
+                    ELSE t
+                    END
+                )
+                FROM jsonb_array_elements(ticket_history) AS t
+            )
+            WHERE id = $1
+            """,
+            project_id, ticket_id, status,
+        )
+
+async def update_ticket_fields(project_id: str, ticket_id: str, fields: dict) -> None:
+    """Update multiple fields of a specific ticket in ticket_history JSONB array."""
+    pool = database.get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE projects
+            SET ticket_history = (
+                SELECT jsonb_agg(
+                    CASE WHEN t->>'id' = $2
+                    THEN t || $3::jsonb
+                    ELSE t
+                    END
+                )
+                FROM jsonb_array_elements(ticket_history) AS t
+            )
+            WHERE id = $1
+            """,
+            project_id, ticket_id, json.dumps(fields),
+        )
+
+async def overwrite_ticket_history(project_id: str, tickets: list[dict]) -> None:
+    """Overwrite the entire ticket_history array with the provided tickets."""
+    pool = database.get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE projects
+            SET ticket_history = $2::jsonb
+            WHERE id = $1
+            """,
+            project_id, json.dumps(tickets),
+        )

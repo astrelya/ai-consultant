@@ -273,3 +273,32 @@ class TicketManager:
             print(f"  [TicketManager] Failed to transition ticket {ticket_id}: {e}")
             return False
 
+    async def create_jira_ticket(self, title: str, description: str) -> str:
+        if self.system == "github":
+            return ""
+            
+        print(f"  [TicketManager] Creating Jira ticket for '{title}'...")
+        jira_url = os.environ.get("JIRA_URL", "https://astrelya.atlassian.net")
+        system_prompt = f"""
+        You are a helpful assistant with access to Jira MCP tools.
+        Create a new Jira issue (ticket) with the following details:
+        Title/Summary: {title}
+        Description: {description}
+        Issue Type: Task
+        
+        CRITICAL: Use the cloudId associated with the JIRA_URL/site '{jira_url}' (which is '95778ac0-3f3b-46a0-95f5-e465d87b6a37').
+        Use the appropriate Jira project (try to search for one, or use 'PROJ' if unknown, but typically it should be configured).
+        
+        Return the result EXACTLY as a JSON string matching this schema:
+        {{
+            "key": "THE-CREATED-ISSUE-KEY"
+        }}
+        """
+        manager = await MCPManager.get_instance()
+        try:
+            res = await self._run_agent(manager.jira_tools, system_prompt, f"create-{title[:10]}")
+            return res.get("key", "")
+        except Exception as e:
+            print(f"  [TicketManager] Failed to create Jira ticket: {e}")
+            return ""
+

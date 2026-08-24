@@ -77,5 +77,24 @@ Claude Sonnet 4.6 (Thinking)
 - Git branch chaos: `git stash pop` during a rebase caused `backend/` to be wiped. Recovered by restoring from `origin/App_V2_BMAD`. All new files survived as untracked.
 - `project_store.update_ticket_fields` was missing from restored baseline — added it to `backend/store/project_store.py` along with `update_all_tickets`.
 - Pre-existing test failures in `test_ticket_card_view.py` (4 tests) reference `update_ticket_status` / `update_ticket_status_endpoint` / `TicketStatusUpdate` which do not exist in this version of the codebase. These failures are not regressions from this story.
+- Test isolation issue: importing `backend.main` in the lifespan test caused `.env` load, setting Jira env vars, which caused two `test_ticket_card_view` tests to call `project_store.get_project` with a non-async mock. Fixed by patching Jira env vars and making `fetchrow` an AsyncMock in those tests.
 
 ### Completion Notes List
+
+- ✅ Task 1: Created `backend/execution_lock.py` with `get_execution_lock()` singleton (asyncio.Lock) and `is_execution_running()` predicate.
+- ✅ Task 2: Created `backend/api/routes/execute.py` with `POST /projects/{project_id}/execute` endpoint. Returns 409 if lock held, 404 if project not found, updates all ticket statuses to "In Progress" before beginning execution stub. Lock released via `async with` on completion. Registered in `backend/main.py`. Removed stub endpoint from `projects.py`.
+- ✅ Task 3: Added `await MCPManager.get_instance()` to the FastAPI lifespan in `backend/main.py`, ensuring exactly-once initialization at startup per AD-3.
+- ✅ 9 new tests in `tests/test_execution_endpoint.py` covering AC1, AC2, AC3; all pass (16/16 total).
+
+## File List
+
+- `backend/execution_lock.py` [NEW]
+- `backend/api/routes/execute.py` [NEW]
+- `backend/main.py` [MODIFIED]
+- `backend/api/routes/projects.py` [MODIFIED] — removed stub execute endpoint
+- `tests/test_execution_endpoint.py` [MODIFIED] — full implementation
+- `tests/test_ticket_card_view.py` [MODIFIED] — Jira isolation + fetchrow AsyncMock fix
+
+## Change Log
+
+- 2026-08-24: Story 5.1 implemented — global execution lock, execute endpoint, MCPManager lifespan init (Claude Sonnet 4.6 Thinking)

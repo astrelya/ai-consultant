@@ -1,5 +1,5 @@
 # generated: 2026-07-09
-# last_updated: 2026-07-31
+# last_updated: 2026-08-24
 # project: ai-consultant
 # project_key: NOKEY
 # tracking_system: file-system
@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-09
-last_updated: 2026-07-31
+last_updated: 2026-08-24
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
@@ -74,17 +74,17 @@ development_status:
 
   # Epic 4: Ticket Management
   epic-4: in-progress
-  4-1-ticket-generation-from-spec: in-progress
-  4-2-ticket-card-view-in-chat: ready-for-dev
-  4-3-inline-ticket-edit-and-accept: ready-for-dev
-  4-4-implementation-selection-and-dependency-ordering: backlog
-  4-5-optional-jira-integration-and-approval-gate: backlog
+  4-1-ticket-generation-from-spec: review
+  4-2-ticket-card-view-in-chat: review
+  4-3-inline-ticket-edit-and-accept: review
+  4-4-implementation-selection-and-dependency-ordering: review
+  4-5-optional-jira-integration-and-approval-gate: review
   epic-4-retrospective: optional
 
   # Epic 5: Agent Execution Engine & Quality
-  epic-5: backlog
-  5-1-backend-execution-endpoint-and-sequential-lock: backlog
-  5-2-supervisoragent-wired-to-backend-and-project-store: backlog
+  epic-5: in-progress
+  5-1-backend-execution-endpoint-and-sequential-lock: review
+  5-2-supervisoragent-wired-to-backend-and-project-store: ready-for-dev
   5-3-cross-ticket-accumulated-context: backlog
   5-4-cross-session-persistent-project-memory: backlog
   5-5-context7-grounding-before-code-generation: backlog

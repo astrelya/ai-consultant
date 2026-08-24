@@ -3,6 +3,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStream } from '@/lib/sse/useStream';
 import ExecutionStatusBlock from './ExecutionStatusBlock';
+import TicketCardList from '@/components/TicketCardList';
+import type { Ticket } from '@/components/TicketCard';
+import { apiClient } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -19,8 +22,22 @@ export default function ChatInterface({ projectId }: ChatInterfaceProps) {
   const [showDevView, setShowDevView] = useState(false);
   const [activeMode, setActiveMode] = useState<'brainstorm' | 'spec_review' | 'direct_implementation' | null>(null);
   const [specPreview, setSpecPreview] = useState<string | null>(null);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [jiraConfigured, setJiraConfigured] = useState(false);
 
   const [messages, setMessages] = useState<{ id: string; role: 'user' | 'agent'; content: string }[]>([]);
+
+  useEffect(() => {
+    async function loadProject() {
+      try {
+        const project = await apiClient.getProject(projectId);
+        setJiraConfigured(!!project.jira_configured);
+      } catch (err) {
+        console.error('Failed to load project details:', err);
+      }
+    }
+    loadProject();
+  }, [projectId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -35,6 +52,19 @@ export default function ChatInterface({ projectId }: ChatInterfaceProps) {
       const data = latestSpecStored.data as { preview?: string };
       if (data?.preview) {
         setSpecPreview(data.preview);
+      }
+    }
+  }, [events]);
+
+  // Detect tickets_generated SSE event to show inline ticket cards
+  useEffect(() => {
+    const latestTicketsEvent = events
+      .filter(ev => ev.type === 'tickets_generated')
+      .slice(-1)[0];
+    if (latestTicketsEvent) {
+      const data = latestTicketsEvent.data as { tickets?: Ticket[] };
+      if (data?.tickets) {
+        setTickets(data.tickets);
       }
     }
   }, [events]);
@@ -213,6 +243,11 @@ export default function ChatInterface({ projectId }: ChatInterfaceProps) {
                   </Button>
                 </div>
               </div>
+            )}
+
+            {/* Ticket Cards (shown after tickets_generated SSE event) */}
+            {tickets.length > 0 && (
+              <TicketCardList tickets={tickets} projectId={projectId} jiraConfigured={jiraConfigured} />
             )}
 
             {!hasMessages ? (

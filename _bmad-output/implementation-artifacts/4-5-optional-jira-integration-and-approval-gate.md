@@ -1,6 +1,9 @@
+---
+baseline_commit: a4a3b0bcf5ba42f43aac42feb819144788d799ed
+---
 # Story 4.5: Optional Jira Integration and Approval Gate
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -29,18 +32,18 @@ So that my Jira board stays current and I retain explicit control before the age
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Check Jira Configuration and Update UI (AC: 2, 3)
-  - [ ] On the backend, expose whether Jira is configured (via `env` or an endpoint) so the frontend knows if it should display the approval gate.
-  - [ ] On the frontend, if Jira is configured, render an "Approve & Begin" button that must be clicked before starting execution.
-  - [ ] If Jira is not configured, either show a standard "Begin" button or proceed immediately after selection (as per AC 3).
-- [ ] Task 2: Create Jira Issues on Acceptance (AC: 1)
-  - [ ] When tickets are accepted (or when "Approve & Begin" is clicked), intercept or handle the backend action to create corresponding Jira issues.
-  - [ ] Ensure the Jira issues are created via Jira MCP (through `MCPManager`), not direct HTTP.
-- [ ] Task 3: Sync Ticket Status Transitions to Jira (AC: 1)
-  - [ ] In the ticket state machine (where statuses change to `In Progress`, `Done`, `Error`), check if Jira is configured.
-  - [ ] If configured, use Jira MCP to update the corresponding Jira issue status.
-- [ ] Task 4: Ensure LLM-Free Path (AC: 2)
-  - [ ] Verify that clicking "Approve & Begin" calls `POST /projects/{id}/execute` directly with no LLM involvement.
+- [x] Task 1: Check Jira Configuration and Update UI (AC: 2, 3)
+  - [x] On the backend, expose whether Jira is configured (via `env` or an endpoint) so the frontend knows if it should display the approval gate.
+  - [x] On the frontend, if Jira is configured, render an "Approve & Begin" button that must be clicked before starting execution.
+  - [x] If Jira is not configured, either show a standard "Begin" button or proceed immediately after selection (as per AC 3).
+- [x] Task 2: Create Jira Issues on Acceptance (AC: 1)
+  - [x] When tickets are accepted (or when "Approve & Begin" is clicked), intercept or handle the backend action to create corresponding Jira issues.
+  - [x] Ensure the Jira issues are created via Jira MCP (through `MCPManager`), not direct HTTP.
+- [x] Task 3: Sync Ticket Status Transitions to Jira (AC: 1)
+  - [x] In the ticket state machine (where statuses change to `In Progress`, `Done`, `Error`), check if Jira is configured.
+  - [x] If configured, use Jira MCP to update the corresponding Jira issue status.
+- [x] Task 4: Ensure LLM-Free Path (AC: 2)
+  - [x] Verify that clicking "Approve & Begin" calls `POST /projects/{id}/execute` directly with no LLM involvement.
 
 ## Dev Notes
 
@@ -79,6 +82,16 @@ Gemini 3.1 Pro (Low)
 ### Debug Log References
 None
 ### Completion Notes List
-Ultimate context engine analysis completed - comprehensive developer guide created.
+- Ultimate context engine analysis completed - comprehensive developer guide created.
+- [2026-08-24] Implemented Jira integration. Added `jira_configured` to `ProjectDetail`. Updated `TicketCardList` to render "Approve & Begin" if Jira is configured. Intercepted ticket acceptance in `projects.py` to create Jira tickets using `TicketManager` and Jira MCP. Created basic `/execute` endpoint. Verified tests pass.
 ### File List
 - _bmad-output/implementation-artifacts/4-5-optional-jira-integration-and-approval-gate.md
+- backend/api/routes/projects.py
+- frontend/lib/api/client.ts
+- frontend/app/projects/[id]/ChatInterface.tsx
+- frontend/components/TicketCardList.tsx
+- tools/ticket_manager.py
+### Change Log
+- Added baseline_commit and changed status to review.
+- Handled UI rendering of "Approve & Begin" button.
+- Backend now syncs Accepted and transitioned tickets with Jira if env configured.

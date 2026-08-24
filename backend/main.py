@@ -31,7 +31,8 @@ from backend.api.routes.projects import router as projects_router
 from backend.api.routes.stream import router as stream_router
 from backend.api.routes.bmad import router as bmad_router
 from backend.api.routes.chat import router as chat_router
-from backend.store.database import init_pool, close_pool, create_tables
+from backend.api.routes.execute import router as execute_router
+from backend.store.database import init_pool, close_pool, create_tables, get_pool
 
 
 @asynccontextmanager
@@ -42,11 +43,15 @@ async def lifespan(app: FastAPI):
     await create_tables()
     from backend.store.migrations import run_migrations
     try:
-        from backend.store.database import get_pool
         pool = get_pool()
         await run_migrations(pool)
     except RuntimeError:
         pass  # Expected during tests where init_pool is mocked
+    # Startup: initialize MCPManager singleton (AD-3)
+    # All MCP tool sets are registered inside MCPManager.initialize().
+    # This must happen exactly once at startup — never called ad-hoc.
+    from tools.mcp_loader import MCPManager
+    await MCPManager.get_instance()
     yield
     # Shutdown: close the connection pool
     await close_pool()
@@ -56,6 +61,7 @@ app = FastAPI(title="ai-consultant API", lifespan=lifespan)
 
 app.include_router(health_router)
 app.include_router(projects_router)
+app.include_router(execute_router)
 app.include_router(stream_router)
 app.include_router(bmad_router)
 app.include_router(chat_router)

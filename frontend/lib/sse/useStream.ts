@@ -22,6 +22,8 @@ const NAMED_EVENT_TYPES = [
   'spec_stored',
   'spec_store_error',
   'connected',
+  // Ticket management events (Story 4.2)
+  'tickets_generated',
 ] as const;
 
 export type NamedEventType = typeof NAMED_EVENT_TYPES[number];

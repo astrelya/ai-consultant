@@ -1,6 +1,9 @@
+---
+baseline_commit: a4a3b0bcf5ba42f43aac42feb819144788d799ed
+---
 # Story 4.3: Inline Ticket Edit and Accept
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -29,24 +32,24 @@ So that I maintain full control over the plan with minimal AI overhead on simple
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Make `TicketCard` fields editable (AC: 1)
-  - [ ] Update `frontend/components/TicketCard.tsx` to toggle an "edit mode" for title, description, and acceptance criteria.
-  - [ ] Use `Input` and `Textarea` components for editing fields.
-  - [ ] clicking "Accept" (or "Save") in edit mode calls the `onAccept` handler with the updated field values.
-- [ ] Task 2: Extend backend `PATCH` endpoint (AC: 1)
-  - [ ] Update `TicketStatusUpdate` in `backend/api/routes/projects.py` to optionally include `title`, `description`, and `acceptance_criteria`.
-  - [ ] Update `update_ticket_status` in `backend/store/project_store.py` (or create a new `update_ticket_fields` method) to apply the provided updates to the ticket in the JSONB array.
-- [ ] Task 3: Implement Ticket Revision Backend (AC: 2)
-  - [ ] Add `POST /projects/{project_id}/tickets/{ticket_id}/revise` to `backend/api/routes/projects.py`.
-  - [ ] Create a LangChain invocation that takes the current tickets, the target `ticket_id`, and the user's `instruction`. The LLM should be instructed to output only the updated JSON for the affected ticket(s).
-  - [ ] Update the `ticket_history` in the database with the LLM's response.
-  - [ ] Publish a `tickets_generated` SSE event with the newly updated full ticket list so the frontend refreshes.
-- [ ] Task 4: Wire Revision Frontend (AC: 2)
-  - [ ] Update `reviseTicket` in `frontend/lib/api/client.ts` to call the new POST endpoint.
-  - [ ] Ensure the Submit button next to the revision text area in `TicketCard` calls `onRevise` with the instruction.
-- [ ] Task 5: Implement Accept All (AC: 3)
-  - [ ] Update `TicketCardList.tsx` to include an "Accept All" button at the top/bottom of the list.
-  - [ ] When clicked, iterate through all tickets with status `Pending` and call the `PATCH` endpoint for each (or create a bulk accept endpoint if preferred, though direct API calls in a `Promise.all` loop is acceptable).
+- [x] Task 1: Make `TicketCard` fields editable (AC: 1)
+  - [x] Update `frontend/components/TicketCard.tsx` to toggle an "edit mode" for title, description, and acceptance criteria.
+  - [x] Use `Input` and `Textarea` components for editing fields.
+  - [x] clicking "Accept" (or "Save") in edit mode calls the `onAccept` handler with the updated field values.
+- [x] Task 2: Extend backend `PATCH` endpoint (AC: 1)
+  - [x] Update `TicketStatusUpdate` in `backend/api/routes/projects.py` to optionally include `title`, `description`, and `acceptance_criteria`.
+  - [x] Update `update_ticket_status` in `backend/store/project_store.py` (or create a new `update_ticket_fields` method) to apply the provided updates to the ticket in the JSONB array.
+- [x] Task 3: Implement Ticket Revision Backend (AC: 2)
+  - [x] Add `POST /projects/{project_id}/tickets/{ticket_id}/revise` to `backend/api/routes/projects.py`.
+  - [x] Create a LangChain invocation that takes the current tickets, the target `ticket_id`, and the user's `instruction`. The LLM should be instructed to output only the updated JSON for the affected ticket(s).
+  - [x] Update the `ticket_history` in the database with the LLM's response.
+  - [x] Publish a `tickets_generated` SSE event with the newly updated full ticket list so the frontend refreshes.
+- [x] Task 4: Wire Revision Frontend (AC: 2)
+  - [x] Update `reviseTicket` in `frontend/lib/api/client.ts` to call the new POST endpoint.
+  - [x] Ensure the Submit button next to the revision text area in `TicketCard` calls `onRevise` with the instruction.
+- [x] Task 5: Implement Accept All (AC: 3)
+  - [x] Update `TicketCardList.tsx` to include an "Accept All" button at the top/bottom of the list.
+  - [x] When clicked, iterate through all tickets with status `Pending` and call the `PATCH` endpoint for each (or create a bulk accept endpoint if preferred, though direct API calls in a `Promise.all` loop is acceptable).
 
 ## Dev Notes
 
@@ -109,4 +112,20 @@ None
 ### Completion Notes List
 Ultimate context engine analysis completed - comprehensive developer guide created.
 ### File List
-- _bmad-output/implementation-artifacts/4-3-inline-ticket-edit-and-accept.md
+- `_bmad-output/implementation-artifacts/4-3-inline-ticket-edit-and-accept.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `frontend/components/TicketCard.tsx`
+- `frontend/components/TicketCardList.tsx`
+- `frontend/lib/api/client.ts`
+- `backend/api/routes/projects.py`
+- `backend/store/project_store.py`
+- `tests/test_ticket_card_view.py`
+- `tests/test_inline_ticket_edit.py`
+
+### Change Log
+- Implemented inline editing in TicketCard
+- Updated acceptTicket in frontend API client to support updates
+- Created Accept All logic in TicketCardList
+- Modified PATCH endpoint in backend to support field updates
+- Implemented ticket revision endpoint using LangChain
+- Added unit tests for new store and route methods

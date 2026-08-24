@@ -4,7 +4,7 @@ baseline_commit: d23c04e3a202c28cbef352651d6ba638fcc60f7c
 
 # Story 4.1: Ticket Generation from Spec
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

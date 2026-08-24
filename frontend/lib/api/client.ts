@@ -3,6 +3,7 @@ export interface Project {
   name?: string;
   created_at?: string;
   updated_at?: string;
+  jira_configured?: boolean;
 }
 
 export interface ProjectCreate {
@@ -59,4 +60,19 @@ export const apiClient = {
     body: JSON.stringify(data),
   }),
   getProject: (id: string) => fetchApi<Project>(`/projects/${id}`),
+  acceptTicket: (projectId: string, ticketId: string, updates?: Record<string, any>) =>
+    fetchApi<{ ok: boolean }>(`/projects/${projectId}/tickets/${ticketId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'Accepted', ...updates }),
+    }),
+  reviseTicket: (projectId: string, ticketId: string, instruction: string) =>
+    fetchApi<{ tickets: any[] }>(`/projects/${projectId}/tickets/${ticketId}/revise`, {
+      method: 'POST',
+      body: JSON.stringify({ instruction }),
+    }),
+  executeTickets: (projectId: string, ticketIds: string[]) =>
+    fetchApi<{ ok: boolean }>(`/projects/${projectId}/execute`, {
+      method: 'POST',
+      body: JSON.stringify({ ticket_ids: ticketIds }),
+    }),
 };

@@ -1,6 +1,10 @@
-﻿# Story 4.2: Ticket Card View in Chat
+---
+baseline_commit: a4a3b0bcf5ba42f43aac42feb819144788d799ed
+---
 
-Status: ready-for-dev
+# Story 4.2: Ticket Card View in Chat
+
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -22,35 +26,35 @@ So that I can review the full implementation plan before committing to it.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Register `tickets_generated` as a named SSE event in `useStream.ts` (AC: 1)
-  - [ ] Add `'tickets_generated'` to the `NAMED_EVENT_TYPES` constant array in `frontend/lib/sse/useStream.ts`
-- [ ] Task 2: Create `TicketCard` component (AC: 1)
-  - [ ] Create `frontend/components/TicketCard.tsx`
-  - [ ] Props: `ticket: Ticket`, `onAccept: (id: string) => void`, `onRevise: (id: string, instruction: string) => void`
-  - [ ] Render: title, description, acceptance criteria, blocking list, blocked_by list
-  - [ ] Include Accept button (calls onAccept, no LLM) and revision text field with Submit
-  - [ ] Use existing shadcn/ui: Button, Textarea, Badge from @/components/ui/*
-  - [ ] Apply project CSS tokens (see Design Tokens section)
-- [ ] Task 3: Create `TicketCardList` component (AC: 1)
-  - [ ] Create `frontend/components/TicketCardList.tsx`
-  - [ ] Props: `tickets: Ticket[]`, `projectId: string`
-  - [ ] Sort tickets in dependency-resolved order (topological sort -- blockers before dependents)
-  - [ ] Wire `onAccept` to call `PATCH /projects/{projectId}/tickets/{ticketId}` with `{ status: "Accepted" }` -- zero LLM calls
-  - [ ] Wire `onRevise` to stub only (Story 4.3 scope) -- show "revision coming soon" or call endpoint if it exists
-- [ ] Task 4: Integrate `TicketCardList` into `ChatInterface.tsx` (AC: 1)
-  - [ ] Detect `tickets_generated` events in `ChatInterface.tsx` via events from useStream
-  - [ ] Extract `tickets` array from `event.data`
-  - [ ] Render `<TicketCardList>` inline in the chat message flow (chronological, not in a panel)
-  - [ ] Store ticket list in ChatInterface state via useState<Ticket[]>
-  - [ ] Zero LLM calls on render
-- [ ] Task 5: Add API client helpers (AC: 1)
-  - [ ] Add `acceptTicket(projectId, ticketId)` and `reviseTicket(projectId, ticketId, instruction)` to `frontend/lib/api/client.ts`
-- [ ] Task 6: Add backend PATCH endpoint and store function (AC: 1)
-  - [ ] Add `PATCH /projects/{project_id}/tickets/{ticket_id}` to `backend/api/routes/projects.py`
-  - [ ] Add `update_ticket_status()` to `backend/store/project_store.py`
-- [ ] Task 7: Add tests (AC: 1)
-  - [ ] Add `tests/test_ticket_card_view.py` using pytest
-  - [ ] Test PATCH endpoint: valid body -> 200, mock execute
+- [x] Task 1: Register `tickets_generated` as a named SSE event in `useStream.ts` (AC: 1)
+  - [x] Add `'tickets_generated'` to the `NAMED_EVENT_TYPES` constant array in `frontend/lib/sse/useStream.ts`
+- [x] Task 2: Create `TicketCard` component (AC: 1)
+  - [x] Create `frontend/components/TicketCard.tsx`
+  - [x] Props: `ticket: Ticket`, `onAccept: (id: string) => void`, `onRevise: (id: string, instruction: string) => void`
+  - [x] Render: title, description, acceptance criteria, blocking list, blocked_by list
+  - [x] Include Accept button (calls onAccept, no LLM) and revision text field with Submit
+  - [x] Use existing shadcn/ui: Button, Textarea, Badge from @/components/ui/*
+  - [x] Apply project CSS tokens (see Design Tokens section)
+- [x] Task 3: Create `TicketCardList` component (AC: 1)
+  - [x] Create `frontend/components/TicketCardList.tsx`
+  - [x] Props: `tickets: Ticket[]`, `projectId: string`
+  - [x] Sort tickets in dependency-resolved order (topological sort -- blockers before dependents)
+  - [x] Wire `onAccept` to call `PATCH /projects/{projectId}/tickets/{ticketId}` with `{ status: "Accepted" }` -- zero LLM calls
+  - [x] Wire `onRevise` to stub only (Story 4.3 scope) -- show "revision coming soon" or call endpoint if it exists
+- [x] Task 4: Integrate `TicketCardList` into `ChatInterface.tsx` (AC: 1)
+  - [x] Detect `tickets_generated` events in `ChatInterface.tsx` via events from useStream
+  - [x] Extract `tickets` array from `event.data`
+  - [x] Render `<TicketCardList>` inline in the chat message flow (chronological, not in a panel)
+  - [x] Store ticket list in ChatInterface state via useState<Ticket[]>
+  - [x] Zero LLM calls on render
+- [x] Task 5: Add API client helpers (AC: 1)
+  - [x] Add `acceptTicket(projectId, ticketId)` and `reviseTicket(projectId, ticketId, instruction)` to `frontend/lib/api/client.ts`
+- [x] Task 6: Add backend PATCH endpoint and store function (AC: 1)
+  - [x] Add `PATCH /projects/{project_id}/tickets/{ticket_id}` to `backend/api/routes/projects.py`
+  - [x] Add `update_ticket_status()` to `backend/store/project_store.py`
+- [x] Task 7: Add tests (AC: 1)
+  - [x] Add `tests/test_ticket_card_view.py` using pytest
+  - [x] Test PATCH endpoint: valid body -> 200, mock execute
 
 ## Dev Notes
 
@@ -255,14 +259,37 @@ Story 4.1 (`4-1-ticket-generation-from-spec`) must be implemented before E2E tes
 - [Existing: backend/api/routes/projects.py]
 - [Existing: backend/store/project_store.py]
 
+## Change Log
+
+- Implemented Story 4.2: Ticket Card View in Chat — all 7 tasks complete (Date: 2026-08-24)
+
 ## Dev Agent Record
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (Thinking)
 
 ### Debug Log References
 
+All 4 pytest tests passed on first run (0 failures, 0 regressions).
+
 ### Completion Notes List
 
+- Task 1: Added `'tickets_generated'` to `NAMED_EVENT_TYPES` in `useStream.ts`
+- Task 2: Created `TicketCard.tsx` with `Ticket` interface, shadcn Card/Badge/Button/Textarea, design tokens (bg-muted, bg-log-surface, text-success), Accept/Revise actions
+- Task 3: Created `TicketCardList.tsx` with topological sort (blockers-first), Accept→PATCH wiring (zero LLM), Revise stub for Story 4.3
+- Task 4: Integrated TicketCardList into ChatInterface.tsx — detects `tickets_generated` SSE events via useEffect, renders inline after specPreview card
+- Task 5: Added `acceptTicket()` and `reviseTicket()` helpers to `apiClient` in `client.ts`
+- Task 6: Added `PATCH /projects/{project_id}/tickets/{ticket_id}` endpoint and `update_ticket_status()` store function
+- Task 7: Tests pre-existed from story creation — all 4 pass (store SQL verification, multi-status, endpoint 200, no-LLM assertion)
+
 ### File List
+
+- frontend/lib/sse/useStream.ts (MODIFIED)
+- frontend/components/TicketCard.tsx (NEW)
+- frontend/components/TicketCardList.tsx (NEW)
+- frontend/lib/api/client.ts (MODIFIED)
+- frontend/app/projects/[id]/ChatInterface.tsx (MODIFIED)
+- backend/api/routes/projects.py (MODIFIED)
+- backend/store/project_store.py (MODIFIED)
+- tests/test_ticket_card_view.py (EXISTING — tests verified)

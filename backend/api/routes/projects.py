@@ -10,6 +10,7 @@ Rules:
 - Route handlers are async def (AD-9).
 - GET /projects must NEVER expose agent_memory in list response (AD-5).
 """
+import os
 import uuid
 import datetime
 from typing import Optional
@@ -58,6 +59,7 @@ class ProjectDetail(BaseModel):
     spec: Optional[str]
     ticket_history: list
     cost_ledger: dict
+    jira_configured: bool = False
 
 
 @router.get("/projects", response_model=list[ProjectListItem])
@@ -71,6 +73,14 @@ async def get_project_endpoint(project_id: uuid.UUID) -> ProjectDetail:
     result = await project_store.get_project(str(project_id))
     if result is None:
         raise HTTPException(status_code=404, detail="Project not found")
+        
+    jira_configured = bool(
+        os.environ.get("JIRA_URL") and 
+        os.environ.get("JIRA_USER") and 
+        os.environ.get("JIRA_API_TOKEN")
+    )
+    result["jira_configured"] = jira_configured
+    
     return ProjectDetail(**result)
 
 
@@ -98,7 +108,46 @@ async def update_project_spec_endpoint(project_id: uuid.UUID, body: SpecUpdate) 
         raise HTTPException(status_code=404, detail="Project not found")
     return SpecResponse(**result)
 
-import os
+class TicketUpdate(BaseModel):
+    status: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    acceptance_criteria: Optional[str] = None
+
+
+@router.patch("/projects/{project_id}/tickets/{ticket_id}", status_code=200)
+async def update_ticket_endpoint(
+    project_id: uuid.UUID,
+    ticket_id: str,
+    body: TicketUpdate,
+) -> dict:
+    await project_store.update_ticket_fields(str(project_id), ticket_id, body.model_dump(exclude_unset=True))
+    
+    jira_configured = bool(
+        os.environ.get("JIRA_URL") and 
+        os.environ.get("JIRA_USER") and 
+        os.environ.get("JIRA_API_TOKEN")
+    )
+    if jira_configured and body.status:
+        from tools.ticket_manager import TicketManager
+        tm = TicketManager()
+        if body.status == "Accepted":
+            project = await project_store.get_project(str(project_id))
+            if project:
+                tickets = json.loads(project.get("ticket_history", "[]")) if isinstance(project.get("ticket_history"), str) else (project.get("ticket_history") or [])
+                ticket = next((t for t in tickets if t["id"] == ticket_id), None)
+                if ticket:
+                    # Create the issue in Jira
+                    jira_key = await tm.create_jira_ticket(ticket["title"], ticket.get("description", ""))
+                    if jira_key:
+                        # Could save the Jira key back to DB here if needed
+                        pass
+        elif body.status in ["In Progress", "Done", "Error"]:
+            await tm.transition_ticket(ticket_id, body.status)
+            
+    return {"ok": True}
+
+
 import json
 from langchain_google_genai import ChatGoogleGenerativeAI
 from backend.api.sse import SSEManager
@@ -158,3 +207,71 @@ async def generate_tickets_endpoint(project_id: uuid.UUID):
     await sse_manager.publish(str(project_id), "tickets_generated", {"tickets": new_tickets})
     
     return TicketListResponse(tickets=new_tickets)
+
+class TicketRevisionRequest(BaseModel):
+    instruction: str
+
+class RevisedTicket(BaseModel):
+    id: str
+    title: str
+    description: str
+    acceptance_criteria: str
+    blocking: list[str] = []
+    blocked_by: list[str] = []
+
+class RevisedTicketList(BaseModel):
+    tickets: list[RevisedTicket]
+
+@router.post("/projects/{project_id}/tickets/{ticket_id}/revise", response_model=TicketListResponse)
+async def revise_ticket_endpoint(project_id: uuid.UUID, ticket_id: str, body: TicketRevisionRequest):
+    project = await project_store.get_project(str(project_id))
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    tickets_json = project.get("ticket_history")
+    if not tickets_json:
+        raise HTTPException(status_code=400, detail="No tickets to revise")
+
+    tickets = json.loads(tickets_json) if isinstance(tickets_json, str) else tickets_json
+
+    model_name = os.environ.get("TICKET_MODEL", "gemini-2.5-flash")
+    llm = ChatGoogleGenerativeAI(model=model_name)
+    structured_llm = llm.with_structured_output(RevisedTicketList)
+
+    prompt = f"""
+You are a technical planner.
+Here is the current list of tickets for a project:
+{json.dumps(tickets, indent=2)}
+
+The user wants to revise ticket '{ticket_id}' with the following instruction:
+{body.instruction}
+
+Please output the updated ticket. If this change affects other tickets (e.g. dependencies or scope), output those modified tickets as well.
+Output ONLY the tickets that were modified. Do NOT output tickets that were unaffected.
+Preserve the exact 'id' for any existing tickets you modify.
+    """
+
+    result = await structured_llm.ainvoke(prompt)
+
+    updated_tickets_map = {t.id: t.model_dump() for t in result.tickets}
+    
+    for i, t in enumerate(tickets):
+        if t["id"] in updated_tickets_map:
+            status = t.get("status", "Pending")
+            updated = updated_tickets_map[t["id"]]
+            updated["status"] = status
+            tickets[i] = updated
+            
+    existing_ids = {t["id"] for t in tickets}
+    for t in result.tickets:
+        if t.id not in existing_ids:
+            new_ticket = t.model_dump()
+            new_ticket["status"] = "Pending"
+            tickets.append(new_ticket)
+
+    await project_store.overwrite_ticket_history(str(project_id), tickets)
+
+    sse_manager = await SSEManager.get_instance()
+    await sse_manager.publish(str(project_id), "tickets_generated", {"tickets": tickets})
+    
+    return TicketListResponse(tickets=tickets)

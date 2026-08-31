@@ -126,3 +126,53 @@ ALWAYS use absolute paths for file operations. The base directory is {workspace_
             "message": f"Local PR recommendations implementation finished: {content[:100]}..."
         }
 
+    async def implement_task(self, story_details: dict, spec: str, plan: str, task: dict, branch_name: str, workspace_path: str) -> dict:
+        """Implements a single task from the approved SDD spec/plan (Spec-Driven pipeline)."""
+        ac_lines = "\n".join(f"- {ac}" for ac in task.get("acceptance_criteria", [])) or "- (see specification)"
+
+        print(f"  [LocalDeveloperAgent] Implementing task {task.get('id')}: {task.get('title')}")
+
+        system_prompt = f"""You are a Local Developer Agent implementing ONE task from an approved specification.
+Your workspace is located at: {workspace_path}
+Work on branch '{branch_name}' (the git tool creates it on first use).
+
+APPROVED SPECIFICATION:
+{spec}
+
+IMPLEMENTATION PLAN:
+{plan}
+
+CURRENT TASK ({task.get('id')}): {task.get('title')}
+{task.get('description', '')}
+Task acceptance criteria:
+{ac_lines}
+
+Your task:
+1. List/read the relevant files to understand the current code.
+2. Implement ONLY this task — do not implement other tasks or refactor unrelated code.
+3. Commit and push your changes to branch '{branch_name}' using the git tool, with a message like: feat({story_details.get('id', 'ticket')}): {task.get('id')} {task.get('title')}
+
+ALWAYS use absolute paths for file operations. The base directory is {workspace_path}.
+"""
+
+        local_tools = [local_read_file, local_write_file, local_list_files, local_git_commit_and_push]
+
+        async with load_context7_mcp_tools() as doc_tools:
+            combined_tools = local_tools + doc_tools
+            agent_executor = create_react_agent(self.llm, combined_tools)
+
+            result = await agent_executor.ainvoke({"messages": [("user", system_prompt)]})
+
+        content_raw = result["messages"][-1].content
+        if isinstance(content_raw, list):
+            content = "".join([item.get("text", "") if isinstance(item, dict) else str(item) for item in content_raw])
+        else:
+            content = str(content_raw)
+
+        return {
+            "status": "success",
+            "task_id": task.get("id"),
+            "branch": branch_name,
+            "message": f"Task {task.get('id')} finished: {content[:100]}..."
+        }
+

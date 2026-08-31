@@ -12,7 +12,7 @@ from git import Repo
 
 from agents.local_developer_agent import LocalDeveloperAgent
 from agents.developer_agent import RemoteDeveloperAgent
-from agents.tester_agent import TesterAgent
+from agents.verify_agent import VerifyAgent
 from agents.environment_agent import EnvironmentAgent
 from tools.ticket_manager import TicketManager
 from tools.mcp_loader import MCPManager
@@ -23,7 +23,7 @@ class SupervisorAgent:
     def __init__(self):
         self.remote_developer = RemoteDeveloperAgent()
         self.local_developer = LocalDeveloperAgent()
-        self.tester = TesterAgent()
+        self.verify_agent = VerifyAgent()
         self.environment = EnvironmentAgent()
         self.ticket_manager = TicketManager()
         
@@ -35,56 +35,55 @@ class SupervisorAgent:
         model_name = os.environ.get("TICKET_MODEL", "gemini-2.5-flash")
         self.llm = ChatGoogleGenerativeAI(model=model_name, temperature=0)
 
-    async def run(self, issue_identifier: str):
-        print(f"[Supervisor] Fetching ticket details for {issue_identifier}...")
-        
-        # 1. Fetch User Story
-        story_details = await self.ticket_manager.get_ticket_details(issue_identifier)
-        if not story_details:
-            return f"Failed to retrieve ticket {issue_identifier}"
-            
-        # Transition to In Progress
-        await self.ticket_manager.transition_ticket(issue_identifier, "In Progress")
-            
-        print(f"[Supervisor] Analyzing User Story: {story_details.get('title')}")
-        
-        # 2. Delegate to Environment Agent to setup workspace
-        print("[Supervisor] Delegating to Environment Agent...")
-        env_result = self.environment.prepare_environment(story_details)
-        print(f"[Supervisor] Environment setup finished with status: {env_result.get('status')}")
-        
-        if env_result.get('status') != 'success':
-            return "Environment preparation failed."
-            
-        workspace_path = env_result.get('workspace_path')
-        story_details['repo_full_name'] = env_result.get('repo_full_name')
-        
-        # 3. Delegate to Developer Agent based on mode
-        print(f"[Supervisor] Delegating to {self.mode.capitalize()} Developer Agent...")
-        if self.mode == "local":
-            dev_result = await self.local_developer.implement_feature(story_details, workspace_path)
-        else:
-            dev_result = await self.remote_developer.implement_feature(story_details, workspace_path)
-            
-        print(f"[Supervisor] Developer finished with status: {dev_result.get('status')}")
-        
-        if dev_result.get('status') != 'success':
-            return "Development phase failed."
+    async def _cli_gate(self, payload: dict) -> dict:
+        """Interactive CLI approval for SDD human gates (Phase 1)."""
+        print("\n" + "=" * 60)
+        print(f"[GATE] {payload.get('gate', 'approval')} — awaiting your decision")
+        print("=" * 60)
+        print(payload.get("content", ""))
+        print("=" * 60)
+        while True:
+            answer = (await asyncio.to_thread(input, "Approve? [y/n]: ")).strip().lower()
+            if answer in ("y", "yes"):
+                return {"approved": True, "feedback": ""}
+            if answer in ("n", "no"):
+                feedback = (await asyncio.to_thread(input, "Feedback for the revision: ")).strip()
+                return {"approved": False, "feedback": feedback or "Please revise."}
+            print("Please answer 'y' or 'n'.")
 
-        # 4. Delegate to Tester Agent for Unit Tests
-        print("[Supervisor] Delegating to Tester Agent...")
-        test_result = self.tester.write_and_run_tests(story_details, dev_result.get('code_files', []), workspace_path)
-        print(f"[Supervisor] Tester finished with status: {test_result.get('status')}")
-        
-        # Transition to In Review
-        await self.ticket_manager.transition_ticket(issue_identifier, "In Review")
-        
-        # 5. Final synthesis and output
+    async def run(self, issue_identifier: str):
+        """Runs the full Spec-Driven Development pipeline (core.graph) for a ticket."""
+        # Imported lazily: core.graph imports agents.*, and agents/__init__ loads this module.
+        from core.graph import run_sdd_pipeline
+
+        print(f"[Supervisor] Starting SDD pipeline for {issue_identifier}...")
+
+        try:
+            final_state = await run_sdd_pipeline(issue_identifier, mode=self.mode, on_gate=self._cli_gate)
+        except Exception as e:
+            return f"SDD pipeline failed: {e}"
+
+        # Phase 1+ : the graph can pause on a human gate (LangGraph interrupt)
+        if final_state.get("__interrupt__"):
+            gate = final_state["__interrupt__"][0].value
+            return f"Pipeline paused at gate '{gate.get('gate')}' — awaiting approval ({gate.get('artifact', '')})."
+
+        status = final_state.get("status", "failed")
+        if status != "completed":
+            return f"Pipeline stopped with status '{status}': {final_state.get('error', 'unknown error')}"
+
+        development = {
+            "branch": final_state.get("branch_name"),
+            "pr_url": final_state.get("pr_url"),
+            "log": final_state.get("implementation_log", []),
+        }
+        testing = final_state.get("verification", {})
+
         return {
             "status": "completed",
             "issue": issue_identifier,
-            "development": dev_result,
-            "testing": test_result
+            "development": development,
+            "testing": testing
         }
 
     def parse_pr_identifier(self, pr_url_or_number: str):
@@ -193,9 +192,9 @@ class SupervisorAgent:
             return "PR recommendations development phase failed."
             
         # 7. Run/write tests
-        print("[Supervisor] Delegating to Tester Agent...")
-        test_result = self.tester.write_and_run_tests(story_details, dev_result.get('code_files', []), workspace_path)
-        print(f"[Supervisor] Tester finished with status: {test_result.get('status')}")
+        print("[Supervisor] Delegating to Verify Agent...")
+        test_result = await self.verify_agent.write_and_run_tests(story_details, dev_result.get('code_files', []), workspace_path)
+        print(f"[Supervisor] Verify finished with status: {test_result.get('status')}")
         
         # 8. Transition Jira ticket to In Review
         if ticket_id:

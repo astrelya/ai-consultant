@@ -5,6 +5,10 @@ python-dotenv
 jira
 mcp
 langchain-mcp-adapters
+langgraph-checkpoint-sqlite
+fastapi
+uvicorn[standard]
+jinja2
 requests
 pytest
 GitPython

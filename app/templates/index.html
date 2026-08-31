@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Pipelines — AI Consultant SDD{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2>Nouveau pipeline</h2>
+  <form method="post" action="/pipelines" class="inline-form">
+    <input type="text" name="ticket_id" placeholder="PROJ-101 ou repo#12" required>
+    <select name="mode">
+      <option value="local">local</option>
+      <option value="remote">remote</option>
+    </select>
+    <button class="btn btn-primary" type="submit">Lancer</button>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Pipelines</h2>
+    <button class="btn" type="button" onclick="location.reload()">Rafraîchir</button>
+  </div>
+  {% if pipelines %}
+  <table class="table">
+    <thead>
+      <tr><th>Ticket</th><th>Mode</th><th>Statut</th><th>Tâches</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for p in pipelines %}
+      <tr>
+        <td>{{ p.ticket_id }}</td>
+        <td>{{ p.mode }}</td>
+        <td>
+          <span class="badge badge-{{ p.status_css }}">{{ p.status_label }}</span>
+          {% if p.running %}<span class="spinner" title="en cours"></span>{% endif %}
+        </td>
+        <td>{{ p.task_progress }}</td>
+        <td><a class="btn btn-small" href="/pipelines/{{ p.thread_id }}">Ouvrir</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Aucun pipeline pour l'instant — lancez-en un ci-dessus.</p>
+  {% endif %}
+</section>
+{% endblock %}

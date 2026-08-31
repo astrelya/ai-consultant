@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ ticket_id }} — AI Consultant SDD{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ ticket_id }}</h1>
+    <div class="meta">mode : {{ mode }} · thread : <code>{{ thread_id }}</code></div>
+  </div>
+  <span id="status-badge" class="badge badge-{{ status_css }}">{{ status_label }}</span>
+</div>
+
+{% if error %}
+<div class="alert alert-error">Erreur : {{ error }}</div>
+{% endif %}
+
+{% if pending_gate %}
+<section id="gate-panel" class="panel gate-panel">
+  <h2>⏸ Validation requise — {{ pending_gate.get('gate', '') }}</h2>
+  <p class="gate-question">{{ pending_gate.get('question', 'Approuvez ?') }}</p>
+  <div id="gate-content" class="markdown"></div>
+  <div class="gate-actions">
+    <button class="btn btn-primary" type="button" onclick="submitDecision(true)">✓ Approuver</button>
+    <details>
+      <summary class="btn btn-reject">✗ Refuser avec feedback</summary>
+      <textarea id="gate-feedback" rows="3" placeholder="Feedback pour la révision..."></textarea>
+      <button class="btn btn-reject" type="button" onclick="submitDecision(false)">Envoyer le refus</button>
+    </details>
+  </div>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Progression</h2>
+  <div id="task-progress" class="progress-line">Tâches : {{ task_progress }}</div>
+  {% if task_rows %}
+  <ul class="task-list">
+    {% for t in task_rows %}
+    <li class="{{ 'done' if t.done else ('current' if t.current else '') }}">
+      <span class="task-id">{{ t.id }}</span> {{ t.title }}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if implementation_log %}
+  <ul id="impl-log" class="log">
+    {% for line in implementation_log %}<li>{{ line }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="tabs">
+    <button class="tab-btn active" type="button" data-tab="spec">Spec</button>
+    <button class="tab-btn" type="button" data-tab="plan">Plan</button>
+    <button class="tab-btn" type="button" data-tab="tasks">Tâches</button>
+  </div>
+  <div id="tab-spec" class="tab-panel active markdown"></div>
+  <div id="tab-plan" class="tab-panel markdown"></div>
+  <div id="tab-tasks" class="tab-panel markdown"></div>
+</section>
+
+{% block scripts %}
+<script>
+  window.PIPELINE_ID = "{{ thread_id }}";
+  window.SSE_URL = "/api/pipelines/{{ thread_id }}/events";
+  window.ARTIFACTS = {{ artifacts_json }};
+  window.GATE = {{ gate_json }};
+</script>
+{% endblock %}
+{% endblock %}

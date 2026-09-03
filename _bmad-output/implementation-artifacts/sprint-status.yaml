@@ -1,5 +1,8 @@
 # generated: 2026-07-09
-# last_updated: 2026-08-24
+# last_updated: 2026-09-01 (retrospective: epic-1)
+
+
+
 # project: ai-consultant
 # project_key: NOKEY
 # tracking_system: file-system
@@ -9,18 +12,18 @@
 # ==================
 # Epic Status:
 #   - backlog: Epic not yet started
-#   - in-progress: Epic actively being worked on
+#   - done: Epic actively being worked on
 #   - done: All stories in epic completed
 #
 # Epic Status Transitions:
-#   - backlog → in-progress: Automatically when first story is created (via create-story)
-#   - in-progress → done: Manually when all stories reach 'done' status
+#   - backlog → done: Automatically when first story is created (via create-story)
+#   - done → done: Manually when all stories reach 'done' status
 #
 # Story Status:
 #   - backlog: Story only exists in epic file
 #   - ready-for-dev: Story file created in stories folder
-#   - in-progress: Developer actively working on implementation
-#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Developer actively working on implementation
+#   - done: Ready for code done (via Dev's code-done workflow)
 #   - done: Story completed
 #
 # Retrospective Status:
@@ -29,75 +32,78 @@
 #
 # Action Item Status:
 #   - open: Committed during a retrospective, not yet addressed
-#   - in-progress: Actively being worked on
+#   - done: Actively being worked on
 #   - done: Completed
 #
 # WORKFLOW NOTES:
 # ===============
-# - Epic transitions to 'in-progress' automatically when first story is created
+# - Epic transitions to 'done' automatically when first story is created
 # - Stories can be worked in parallel if team capacity allows
 # - Developer typically creates next story after previous one is 'done' to incorporate learnings
-# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Dev moves story to 'done', then runs code-done (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-09
-last_updated: 2026-08-24
+last_updated: 2026-09-01 (code-done: epic-1)
 project_key: NOKEY
+
+
+
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 
 development_status:
   # Epic 1: Backend Foundation & Project Management
-  epic-1: in-progress
-  1-1-scaffold-fastapi-backend-with-postgresql: review
-  1-2-create-a-new-project: review
-  1-3-list-and-resume-projects: review
-  1-4-sse-streaming-endpoint: review
-  epic-1-retrospective: optional
+  epic-1: done
+  1-1-scaffold-fastapi-backend-with-postgresql: done
+  1-2-create-a-new-project: done
+  1-3-list-and-resume-projects: done
+  1-4-sse-streaming-endpoint: done
+  epic-1-retrospective: done
 
   # Epic 2: Frontend & Chat Interface
-  epic-2: in-progress
-  2-1-scaffold-nextjs-frontend-with-api-and-sse-clients: review
-  2-2-project-list-and-creation-ui: review
-  2-3-chat-view-with-streaming-agent-output: review
-  2-4-execution-status-block: review
+  epic-2: done
+  2-1-scaffold-nextjs-frontend-with-api-and-sse-clients: done
+  2-2-project-list-and-creation-ui: done
+  2-3-chat-view-with-streaming-agent-output: done
+  2-4-execution-status-block: done
   epic-2-retrospective: optional
 
   # Epic 3: Spec Pipeline
-  epic-3: in-progress
-  3-1-bmad-subprocess-integration: review
-  3-2-dual-location-spec-storage: review
-  3-3-brainstorm-mode: review
-  3-4-spec-review-mode: review
-  3-5-direct-implementation-mode: review
+  epic-3: done
+  3-1-bmad-subprocess-integration: done
+  3-2-dual-location-spec-storage: done
+  3-3-brainstorm-mode: done
+  3-4-spec-done-mode: done
+  3-5-direct-implementation-mode: done
   epic-3-retrospective: optional
 
   # Epic 4: Ticket Management
-  epic-4: in-progress
-  4-1-ticket-generation-from-spec: review
-  4-2-ticket-card-view-in-chat: review
-  4-3-inline-ticket-edit-and-accept: review
-  4-4-implementation-selection-and-dependency-ordering: review
-  4-5-optional-jira-integration-and-approval-gate: review
+  epic-4: done
+  4-1-ticket-generation-from-spec: done
+  4-2-ticket-card-view-in-chat: done
+  4-3-inline-ticket-edit-and-accept: done
+  4-4-implementation-selection-and-dependency-ordering: done
+  4-5-optional-jira-integration-and-approval-gate: done
   epic-4-retrospective: optional
 
   # Epic 5: Agent Execution Engine & Quality
-  epic-5: in-progress
-  5-1-backend-execution-endpoint-and-sequential-lock: review
-  5-2-supervisoragent-wired-to-backend-and-project-store: ready-for-dev
-  5-3-cross-ticket-accumulated-context: backlog
-  5-4-cross-session-persistent-project-memory: backlog
-  5-5-context7-grounding-before-code-generation: backlog
-  5-6-mandatory-test-artifact-gate: backlog
-  5-7-autonomous-pre-merge-regression-fix: backlog
-  5-8-diagnostic-logging-before-escalation: backlog
-  5-9-error-report-and-flagged-commit: backlog
-  5-10-default-logging-scaffold-in-generated-projects: backlog
+  epic-5: done
+  5-1-backend-execution-endpoint-and-sequential-lock: done
+  5-2-supervisoragent-wired-to-backend-and-project-store: done
+  5-3-cross-ticket-accumulated-context: done
+  5-4-cross-session-persistent-project-memory: done
+  5-5-context7-grounding-before-code-generation: done
+  5-6-mandatory-test-artifact-gate: done
+  5-7-autonomous-pre-merge-regression-fix: done
+  5-8-diagnostic-logging-before-escalation: done
+  5-9-error-report-and-flagged-commit: done
+  5-10-default-logging-scaffold-in-generated-projects: done
   epic-5-retrospective: optional
 
   # Epic 6: Advanced Visibility & Controls
-  epic-6: backlog
-  6-1-token-consumption-tracking-and-cost-ledger: backlog
-  6-2-cost-display-in-chat-view: backlog
-  6-3-dev-view-with-live-file-tree-local-mode: backlog
+  epic-6: done
+  6-1-token-consumption-tracking-and-cost-ledger: done
+  6-2-cost-display-in-chat-view: done
+  6-3-dev-view-with-live-file-tree-local-mode: done
   epic-6-retrospective: optional

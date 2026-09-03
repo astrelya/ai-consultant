@@ -41,6 +41,8 @@ def local_git_commit_and_push(repo_path: str, branch_name: str, message: str) ->
     return f"Successfully pushed changes to branch {branch_name}"
 
 from tools.context7_mcp import load_context7_mcp_tools
+from agents.context7_grounding import ground_with_context7, Context7GroundingError
+from agents.token_tracker import tracked_ainvoke
 
 class LocalDeveloperAgent:
     def __init__(self):
@@ -53,7 +55,19 @@ class LocalDeveloperAgent:
         branch_name = f"feature-local/{story_details.get('id', 'new-feature').replace('/', '-').replace('#', '-')}"
         
         print(f"  [LocalDeveloperAgent] Starting local dev flow for: {title}")
-        
+
+        # AD-8: Context7 grounding is mandatory before any code-generation ainvoke.
+        try:
+            grounding = await ground_with_context7(
+                story_details, story_details.get("project_id")
+            )
+        except Context7GroundingError as exc:
+            return {
+                "status": "error",
+                "reason": "context7_grounding_failed",
+                "message": str(exc),
+            }
+
         system_prompt = f"""You are a Local Developer Agent.
 Your workspace is located at: {workspace_path}
 You have access to local file tools AND Context7 Documentation tools.
@@ -67,13 +81,15 @@ Your task:
 ALWAYS use absolute paths for file operations. The base directory is {workspace_path}.
 """
 
+        system_prompt = f"{grounding}\n{system_prompt}"
+
         local_tools = [local_read_file, local_write_file, local_list_files, local_git_commit_and_push]
         
         async with load_context7_mcp_tools() as doc_tools:
             combined_tools = local_tools + doc_tools
             agent_executor = create_react_agent(self.llm, combined_tools)
             
-            result = await agent_executor.ainvoke({"messages": [("user", system_prompt)]})
+            result = await tracked_ainvoke(agent_executor, {"messages": [("user", system_prompt)]})
         
         content_raw = result["messages"][-1].content
         if isinstance(content_raw, list):
@@ -92,7 +108,19 @@ ALWAYS use absolute paths for file operations. The base directory is {workspace_
         description = story_details.get('description', '')
         
         print(f"  [LocalDeveloperAgent] Starting local PR recommendations flow for: {title}")
-        
+
+        # AD-8: Context7 grounding is mandatory before any code-generation ainvoke.
+        try:
+            grounding = await ground_with_context7(
+                story_details, story_details.get("project_id")
+            )
+        except Context7GroundingError as exc:
+            return {
+                "status": "error",
+                "reason": "context7_grounding_failed",
+                "message": str(exc),
+            }
+
         system_prompt = f"""You are a Local Developer Agent.
 Your workspace is located at: {workspace_path}
 You are working on the EXISTING branch '{branch_name}' which is already checked out.
@@ -106,13 +134,15 @@ Your task:
 ALWAYS use absolute paths for file operations. The base directory is {workspace_path}.
 """
 
+        system_prompt = f"{grounding}\n{system_prompt}"
+
         local_tools = [local_read_file, local_write_file, local_list_files, local_git_commit_and_push]
         
         async with load_context7_mcp_tools() as doc_tools:
             combined_tools = local_tools + doc_tools
             agent_executor = create_react_agent(self.llm, combined_tools)
             
-            result = await agent_executor.ainvoke({"messages": [("user", system_prompt)]})
+            result = await tracked_ainvoke(agent_executor, {"messages": [("user", system_prompt)]})
         
         content_raw = result["messages"][-1].content
         if isinstance(content_raw, list):

@@ -62,6 +62,7 @@ async def create_tables() -> None:
                 spec           TEXT,
                 ticket_history JSONB       NOT NULL DEFAULT '[]',
                 cost_ledger    JSONB       NOT NULL DEFAULT '{}',
+                chat_history   JSONB       NOT NULL DEFAULT '[]',
                 repo_path      TEXT,
                 updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()

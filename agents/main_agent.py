@@ -4,6 +4,7 @@ This agent leverages sub-agents to complete the software development lifecycle t
 """
 import asyncio
 import re
+import uuid
 from typing import List, Dict
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.tools import StructuredTool
@@ -14,6 +15,8 @@ from agents.local_developer_agent import LocalDeveloperAgent
 from agents.developer_agent import RemoteDeveloperAgent
 from agents.tester_agent import TesterAgent
 from agents.environment_agent import EnvironmentAgent
+from agents import token_tracker
+from agents.token_tracker import tracked_ainvoke
 from tools.ticket_manager import TicketManager
 from tools.mcp_loader import MCPManager
 
@@ -30,6 +33,8 @@ class SupervisorAgent:
         # Memory and Configuration
         self.mode = os.environ.get("AGENT_MODE", "remote")
         self.chat_history = []  # Maintain conversation state
+        # Story 6.1: lazily created per-instance chat session id for cost accumulation.
+        self._chat_session_id: str | None = None
         
         # Initialize Gemini for true LLM-based routing
         model_name = os.environ.get("TICKET_MODEL", "gemini-2.5-flash")
@@ -73,8 +78,9 @@ class SupervisorAgent:
 
         # 4. Delegate to Tester Agent for Unit Tests
         print("[Supervisor] Delegating to Tester Agent...")
-        test_result = self.tester.write_and_run_tests(story_details, dev_result.get('code_files', []), workspace_path)
+        test_result = await self.tester.write_and_run_tests(story_details, dev_result.get('code_files', []), workspace_path)
         print(f"[Supervisor] Tester finished with status: {test_result.get('status')}")
+        print(f"  [TesterAgent] Test artifact: {test_result.get('test_artifact_ref')}")
         
         # Transition to In Review
         await self.ticket_manager.transition_ticket(issue_identifier, "In Review")
@@ -194,8 +200,9 @@ class SupervisorAgent:
             
         # 7. Run/write tests
         print("[Supervisor] Delegating to Tester Agent...")
-        test_result = self.tester.write_and_run_tests(story_details, dev_result.get('code_files', []), workspace_path)
+        test_result = await self.tester.write_and_run_tests(story_details, dev_result.get('code_files', []), workspace_path)
         print(f"[Supervisor] Tester finished with status: {test_result.get('status')}")
+        print(f"  [TesterAgent] Test artifact: {test_result.get('test_artifact_ref')}")
         
         # 8. Transition Jira ticket to In Review
         if ticket_id:
@@ -207,10 +214,20 @@ class SupervisorAgent:
         summary += f"Branch '{branch_name}' updated and pushed. "
         return summary + f"Test coverage: {test_result.get('coverage', 'N/A')}."
 
-    async def process_chat(self, user_command: str) -> str:
+    async def process_chat(self, user_command: str, project_id: str | None = None) -> str:
         """
         Uses an LLM and LangGraph ReAct agent to route user intents interactively.
         """
+        # Story 6.1: wire ContextVars for token tracking. When called from the CLI
+        # without a project_id there is no ledger to update — record_llm_call will
+        # short-circuit on the empty ContextVar and skip persistence.
+        if project_id is not None:
+            token_tracker.CURRENT_PROJECT_ID.set(project_id)
+        if self._chat_session_id is None:
+            self._chat_session_id = str(uuid.uuid4())
+            token_tracker.reset_session(self._chat_session_id)
+        token_tracker.CURRENT_SESSION_ID.set(self._chat_session_id)
+
         # Define the tools available to the Supervisor LLM
         async def fetch_tickets(status_filter: str = None) -> str:
             """Fetches active tickets/projects. You can optionally provide a status_filter like 'TODO', 'In Progress', or 'Done' to only get tickets in that status."""
@@ -268,7 +285,7 @@ class SupervisorAgent:
         messages.append(("user", user_command))
         
         # Execute the routing agent
-        result = await router_agent.ainvoke({"messages": messages})
+        result = await tracked_ainvoke(router_agent, {"messages": messages})
         
         # Parse output
         content_raw = result["messages"][-1].content

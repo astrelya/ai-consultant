@@ -4,7 +4,7 @@ baseline_commit: d23c04e3a202c28cbef352651d6ba638fcc60f7c
 
 # Story 1.1: Scaffold FastAPI Backend with PostgreSQL
 
-Status: review
+Status: in-progress
 
 ## Story
 
@@ -74,6 +74,16 @@ so that I have a verified working foundation on which all project management API
 - [ ] [Review][Patch] Update onboarding docs for backend runtime setup [README.md:1]
 - [x] [Review][Defer] Define dependency versioning policy for `requirements.txt` [requirements.txt:1] — deferred, pre-existing
 
+#### Epic 1 Review (2026-09-01)
+
+- [x] [Review][Decision] `projects` DDL adds columns beyond Story 1.1 AC-3 exact schema — resolved 2026-09-01: spec amended to document `chat_history` / `repo_path` / `updated_at` as accepted forward-additions from Epic 5/6. See "projects Table Schema (exact DDL)" section.
+- [ ] [Review][Patch] Missing asyncpg JSONB codec — `agent_memory`/`ticket_history`/`cost_ledger` come back as `str` unless `pool.set_type_codec('jsonb', json.dumps/loads, schema='pg_catalog')` is registered in `init_pool()`; downstream `ProjectDetail` Pydantic validation will fail. Evidence: defensive `isinstance(..., str)` forks in [backend/api/routes/projects.py](backend/api/routes/projects.py) and `get_project`'s `chat_history` decode in [backend/store/project_store.py](backend/store/project_store.py). [backend/store/database.py:27]
+- [ ] [Review][Patch] Pool created with library defaults — no `min_size`/`max_size`/`command_timeout`/`timeout` in `asyncpg.create_pool(url)`; SSE clients can exhaust the default pool and hang `POST /projects` under load. [backend/store/database.py:27]
+- [x] [Review][Defer] `sys.exit(1)` inside `async init_pool()` duplicates the same check in [backend/main.py:18](backend/main.py) and hard-kills the process mid-lifespan; refactor to `raise RuntimeError` and let uvicorn handle exit. Not in AC-5 wording — defer as reliability polish. [backend/store/database.py:26]
+- [x] [Review][Defer] `gen_random_uuid()` requires PostgreSQL 13+; architecture pins latest stable so acceptable, but add an explicit `CREATE EXTENSION IF NOT EXISTS pgcrypto` guard when we broaden supported versions. [backend/store/database.py:59]
+- [x] [Review][Defer] Task 5 (`health.py` create) and Task 6 header (`.env.example`) remain unchecked despite implementation present. Retrospective action item epic-1-A2 already tracks this. Defer.
+- [x] [Review][Defer] Diff-scoping process gap — the Epic 1 diff invocation excluded [backend/api/routes/stream.py](backend/api/routes/stream.py). Matches retrospective action item epic-1-A6 (require Review Findings section per story). Process defer.
+
 ## Dev Notes
 
 ### What This Story Builds
@@ -123,17 +133,22 @@ tests/
 
 ```sql
 CREATE TABLE IF NOT EXISTS projects (
-    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    name        TEXT        NOT NULL,
-    agent_memory JSONB      NOT NULL DEFAULT '{}',
-    spec        TEXT,
-    ticket_history JSONB    NOT NULL DEFAULT '[]',
-    cost_ledger JSONB       NOT NULL DEFAULT '{}',
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    name           TEXT        NOT NULL,
+    agent_memory   JSONB       NOT NULL DEFAULT '{}',
+    spec           TEXT,
+    ticket_history JSONB       NOT NULL DEFAULT '[]',
+    cost_ledger    JSONB       NOT NULL DEFAULT '{}',
+    chat_history   JSONB       NOT NULL DEFAULT '[]',
+    repo_path      TEXT,
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
 > **Note:** `gen_random_uuid()` is built-in from PostgreSQL 13+. For PostgreSQL 12 and below, the `uuid-ossp` extension is required and `uuid_generate_v4()` must be used. This project targets `latest stable PostgreSQL` per architecture, so `gen_random_uuid()` is safe.
+>
+> **Schema amendment (2026-09-01, Epic 1 review D1):** Story 1.1 originally specified 7 columns. Three forward-additions are now part of the baseline DDL to keep the `CREATE TABLE IF NOT EXISTS` idempotent across epics: `chat_history` (Story 5.4 — persistent chat), `repo_path` (Story 6.3 AC-6 — local-mode workspace), `updated_at` (audit stamp, added alongside `repo_path`). Story 1.1 AC-3 is satisfied by the 7 original columns; the extras are accepted deviations.
 
 ### Implementation Pattern for `backend/store/database.py`
 

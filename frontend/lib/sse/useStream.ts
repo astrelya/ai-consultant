@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8050';
 
 export interface StreamEvent {
   type: string;
@@ -15,15 +15,23 @@ const NAMED_EVENT_TYPES = [
   'execution_tick',
   'ticket_done',
   'execution_end',
-  // Spec pipeline and brainstorm events (Stories 3.3, 3.4)
+  // Legacy spec pipeline events (kept for the ExecutionStatusBlock log)
   'bmad_output',
   'bmad_complete',
   'bmad_error',
   'spec_stored',
   'spec_store_error',
   'connected',
-  // Ticket management events (Story 4.2)
   'tickets_generated',
+  'token_update',
+  'file_tree_update',
+  // Streaming chat replies (llm_chat.stream_chat_reply).
+  'chat_start',
+  'chat_chunk',
+  'chat_done',
+  'chat_error',
+  'tool_call',
+  'tool_result',
 ] as const;
 
 export type NamedEventType = typeof NAMED_EVENT_TYPES[number];

@@ -12,4 +12,5 @@ fastapi
 uvicorn[standard]
 asyncpg
 httpx
+watchdog>=3.0
 

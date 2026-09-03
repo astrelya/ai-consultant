@@ -1,9 +1,26 @@
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'agent' | 'system';
+  content: string;
+  created_at?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface Project {
   id: string;
   name?: string;
   created_at?: string;
   updated_at?: string;
   jira_configured?: boolean;
+  spec?: string | null;
+  chat_history?: ChatMessage[];
+  cost_ledger?: {
+    total_prompt_tokens?: number;
+    total_completion_tokens?: number;
+    total_tokens?: number;
+    total_cost_usd?: number;
+    last_updated?: string;
+  };
 }
 
 export interface ProjectCreate {
@@ -11,7 +28,24 @@ export interface ProjectCreate {
   description?: string;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Story 6.3 — Dev View workspace shapes.
+export interface WorkspaceEntry {
+  path: string;
+  type: 'file' | 'dir';
+}
+
+export interface WorkspaceTree {
+  root: string | null;
+  entries: WorkspaceEntry[];
+}
+
+export interface WorkspaceFile {
+  path: string;
+  content: string;
+  truncated: boolean;
+}
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8050';
 
 class ApiClientError extends Error {
   constructor(public status: number, message: string) {
@@ -75,4 +109,27 @@ export const apiClient = {
       method: 'POST',
       body: JSON.stringify({ ticket_ids: ticketIds }),
     }),
+  generateTickets: (projectId: string) =>
+    fetchApi<{ tickets: any[] }>(`/projects/${projectId}/tickets/generate`, {
+      method: 'POST',
+    }),
+  getConfig: () => fetchApi<{
+    agent_mode: 'local' | 'remote';
+    models: { ticket: string; coding: string };
+    available_models: string[];
+  }>('/config'),
+  updateModels: (body: { ticket?: string; coding?: string }) =>
+    fetchApi<{
+      updated: Record<string, string>;
+      models: { ticket: string; coding: string };
+    }>('/config/models', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  getWorkspaceTree: (projectId: string) =>
+    fetchApi<WorkspaceTree>(`/projects/${projectId}/workspace/tree`),
+  getWorkspaceFile: (projectId: string, path: string) =>
+    fetchApi<WorkspaceFile>(
+      `/projects/${projectId}/workspace/file?path=${encodeURIComponent(path)}`,
+    ),
 };

@@ -77,3 +77,38 @@ def detect_direct_implementation_intent(message: str) -> bool:
             return True
 
     return False
+
+
+def detect_generate_tickets_intent(message: str) -> bool:
+    """Trigger real ticket generation from the saved spec."""
+    patterns = [
+        r'\bg[ée]n[ée]re[rz]?\s+(le|les|des|un|mes|nos)?\s*tickets?\b',
+        r'\bcr[ée]e[rz]?\s+(le|les|des|un|mes|nos)?\s*tickets?\b',
+        r'\bfai[st]?\s+(le|les|des)?\s*tickets?\b',
+        r'\bgenerate\s+(the\s+)?tickets?\b',
+        r'\bcreate\s+(the\s+)?tickets?\b',
+        r'\bmake\s+(the\s+)?tickets?\b',
+    ]
+    for p in patterns:
+        if re.search(p, message, re.IGNORECASE):
+            return True
+    return False
+
+
+def detect_execute_intent(message: str) -> bool:
+    """Trigger real execution of the generated tickets by the supervisor."""
+    patterns = [
+        r'\bimpl[ée]mente[rz]?\s+(le\s+)?projet\b',
+        r'\bcommence[rz]?\s+l\'?impl[ée]mentation\b',
+        r'\bfai[st]?\s+l\'?impl[ée]mentation\b',
+        r'\blance[rz]?\s+(le\s+)?d[ée]veloppement\b',
+        r'\bd[ée]marre[rz]?\s+l\'?impl[ée]mentation\b',
+        r'\bstart\s+(the\s+)?(dev|development|implementation)\b',
+        r'\bexecute\s+(the\s+)?tickets?\b',
+        r'\brun\s+(the\s+)?tickets?\b',
+        r'\bimplement\s+(the\s+)?project\b',
+    ]
+    for p in patterns:
+        if re.search(p, message, re.IGNORECASE):
+            return True
+    return False

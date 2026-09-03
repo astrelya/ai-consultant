@@ -4,7 +4,7 @@ baseline_commit: d23c04e3a202c28cbef352651d6ba638fcc60f7c
 
 # Story 1.2: Create a New Project
 
-Status: review
+Status: in-progress
 
 ## Story
 
@@ -48,6 +48,14 @@ so that I have a persistent, isolated workspace with its own memory, spec slot, 
   - [x] Test `POST /projects` with same name twice → both succeed with different UUIDs
   - [x] Test `POST /projects` with missing `name` field → 422
   - [x] Test `POST /projects` with blank/whitespace-only name → 422
+
+### Review Findings
+
+#### Epic 1 Review (2026-09-01)
+
+- [ ] [Review][Patch] `ProjectCreate.name` has no `max_length` — an unbounded name (multi-MB) can be persisted and inflates every subsequent `GET /projects` payload. Add `Field(..., max_length=255)` (or repo-wide constant). [backend/api/routes/projects.py:25]
+- [x] [Review][Defer] `name_not_blank` validates on `str(v).strip()` but returns `v` unstripped, so leading/trailing whitespace lands in the DB. AC-4 only mandates rejection of blank names, so behavior conforms; UX polish. [backend/api/routes/projects.py:31]
+- [x] [Review][Defer] `create_project_endpoint` has no error handler around DB writes — an asyncpg failure surfaces to the client as a raw 500 with traceback. Not in AC — defer as observability/hardening item. [backend/api/routes/projects.py:45]
 
 ## Dev Notes
 

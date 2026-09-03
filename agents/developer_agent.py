@@ -7,6 +7,8 @@ import asyncio
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 from tools.mcp_loader import load_dev_tools
+from agents.context7_grounding import ground_with_context7, Context7GroundingError
+from agents.token_tracker import tracked_ainvoke
 
 class RemoteDeveloperAgent:
     def __init__(self):
@@ -20,7 +22,19 @@ class RemoteDeveloperAgent:
         branch_name = f"feature/{story_details.get('id', 'new-feature')}"
         
         print(f"  [RemoteDeveloperAgent] Starting remote dev flow via MCP for: {title}")
-        
+
+        # AD-8: Context7 grounding is mandatory before any code-generation ainvoke.
+        try:
+            grounding = await ground_with_context7(
+                story_details, story_details.get("project_id")
+            )
+        except Context7GroundingError as exc:
+            return {
+                "status": "error",
+                "reason": "context7_grounding_failed",
+                "message": str(exc),
+            }
+
         # Build the prompt
         system_prompt = f"""You are an elite Developer Subagent. 
 Your workspace path locally is {workspace_path}. 
@@ -33,6 +47,8 @@ Your task:
 3. Create a pull request outlining what you did.
 """
 
+        system_prompt = f"{grounding}\n{system_prompt}"
+
         # Context manager for the MCP connection (GitHub + Context7)
         async with load_dev_tools() as tools:
             # Create a localized ReAct agent incorporating the Gemini model and the loaded MCP tools
@@ -41,7 +57,7 @@ Your task:
             print("  [DeveloperAgent] Loaded MCP tools, executing ReAct reasoning loop...")
             
             # Execute the LangGraph ReAct agent
-            result = await agent_executor.ainvoke({"messages": [("user", system_prompt)]})
+            result = await tracked_ainvoke(agent_executor, {"messages": [("user", system_prompt)]})
             
             # Print the final observation (robustly parsing content list if needed)
             content_raw = result["messages"][-1].content
@@ -77,7 +93,19 @@ Your task:
         description = story_details.get('description', '')
         
         print(f"  [RemoteDeveloperAgent] Starting remote PR recommendations flow via MCP for: {title}")
-        
+
+        # AD-8: Context7 grounding is mandatory before any code-generation ainvoke.
+        try:
+            grounding = await ground_with_context7(
+                story_details, story_details.get("project_id")
+            )
+        except Context7GroundingError as exc:
+            return {
+                "status": "error",
+                "reason": "context7_grounding_failed",
+                "message": str(exc),
+            }
+
         system_prompt = f"""You are an elite Developer Subagent. 
 Your workspace path locally is {workspace_path}. 
 The target GitHub repository is: '{story_details.get('repo_full_name', 'unknown')}'.
@@ -90,10 +118,12 @@ Your task:
 3. Commit the changes and push them directly to the existing branch '{branch_name}' in the repository '{story_details.get('repo_full_name', 'unknown')}'. Do NOT create a new branch and do NOT create a new pull request.
 """
 
+        system_prompt = f"{grounding}\n{system_prompt}"
+
         async with load_dev_tools() as tools:
             agent_executor = create_react_agent(self.llm, tools)
             print("  [DeveloperAgent] Loaded MCP tools, executing ReAct reasoning loop...")
-            result = await agent_executor.ainvoke({"messages": [("user", system_prompt)]})
+            result = await tracked_ainvoke(agent_executor, {"messages": [("user", system_prompt)]})
             
             content_raw = result["messages"][-1].content
             if isinstance(content_raw, list):

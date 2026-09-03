@@ -1,6 +1,9 @@
+---
+baseline_commit: b873c0bec72ac891aa89d1b0fcf39a979992fbc7
+---
 # Story 5.2: SupervisorAgent Wired to Backend & Project Store
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -45,5 +48,40 @@ So that the frontend can display live execution state and the agent hierarchy is
 - Consult `project-context.md` for dual-mode development rules and LangGraph invocation formats.
 - All new agent logic belongs in `agents/` and must be registered as a sub-agent in `SupervisorAgent.__init__()`.
 
-## Completion Notes
+## Tasks/Subtasks
+
+- [x] 1. Scaffold `SupervisorAgent` class in `agents/supervisor_agent.py` and register sub-agents
+- [x] 2. Integrate project store access layer to retrieve ticket and project state in `SupervisorAgent`
+- [x] 3. Implement `publish_event` mechanism to stream log output to the SSE endpoint
+- [x] 4. Implement environmental routing to delegate to `LocalDeveloperAgent` or `RemoteDeveloperAgent` based on `AGENT_MODE`
+- [x] 5. Write unit tests for `AGENT_MODE` routing and `publish_event` async behavior
+- [x] 6. Ensure `SupervisorAgent` is integrated correctly into the backend execution loop (Story 5.1 context)
+
+## Dev Notes
+- Remember `SupervisorAgent` is the root node of the agent hierarchy.
+
+## Dev Agent Record
+
+### Debug Log
+
+- Sub-agent constructors call `ChatGoogleGenerativeAI` at init time, which fails without credentials. Fixed by patching constructors in `_make_supervisor()` test helper rather than post-init attribute replacement.
+
+### Completion Notes
+
+- Created `agents/supervisor_agent.py` — a clean backend-facing `SupervisorAgent` separated from the chat-interactive `main_agent.py`. It loads project/ticket context from `project_store.get_project()`, delegates to the correct developer sub-agent based on `AGENT_MODE`, calls `publish_event()` after each meaningful action (load, env setup, delegate, complete), and updates ticket status to "In Review" on success.
+- Replaced the stub in `backend/api/routes/execute.py` with a real `SupervisorAgent().run_tickets()` call, still inside the existing global execution lock from Story 5.1.
+- Created `tests/test_supervisor_agent.py` with 16 unit tests covering: AGENT_MODE routing (local/remote/default), publish_event call count and arguments, error guard paths (project not found, ticket not found, env failure, dev failure), success result structure, multi-ticket execution, and agent hierarchy enforcement via source inspection.
+- All 16 tests pass (`pytest tests/test_supervisor_agent.py -v`).
+
+## File List
+
+- `agents/supervisor_agent.py` [NEW]
+- `backend/api/routes/execute.py` [MODIFIED]
+- `tests/test_supervisor_agent.py` [NEW]
+
+## Change Log
+
+- 2026-08-31: Implemented Story 5.2 — SupervisorAgent wired to backend project store and SSE. Created supervisor_agent.py, updated execute.py stub, added 16 passing unit tests.
+
+## Status Update Notes
 Ultimate context engine analysis completed - comprehensive developer guide created.

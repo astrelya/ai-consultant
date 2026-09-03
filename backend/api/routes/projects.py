@@ -59,6 +59,7 @@ class ProjectDetail(BaseModel):
     spec: Optional[str]
     ticket_history: list
     cost_ledger: dict
+    chat_history: list = []
     jira_configured: bool = False
 
 
@@ -150,7 +151,7 @@ async def update_ticket_endpoint(
 
 import json
 from langchain_google_genai import ChatGoogleGenerativeAI
-from backend.api.sse import SSEManager
+from backend.chat.actions import generate_tickets_from_spec
 
 class GeneratedTicket(BaseModel):
     title: str
@@ -162,51 +163,16 @@ class TicketListResponse(BaseModel):
 
 @router.post("/projects/{project_id}/tickets/generate", response_model=TicketListResponse)
 async def generate_tickets_endpoint(project_id: uuid.UUID):
-    # Get project and spec
     project = await project_store.get_project(str(project_id))
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-        
+
     spec = project.get("spec")
     if not spec:
         raise HTTPException(status_code=400, detail="Cannot generate tickets: spec is empty or missing")
 
-    # Generate tickets using LLM
-    model_name = os.environ.get("TICKET_MODEL", "gemini-2.5-flash")
-    llm = ChatGoogleGenerativeAI(model=model_name)
-    structured_llm = llm.with_structured_output(GeneratedTicket, method="json_schema", include_raw=False)
-    
-    # We want a list of tickets, so we define a wrapper model
-    class TicketGenerationResult(BaseModel):
-        tickets: list[GeneratedTicket]
-        
-    structured_llm = llm.with_structured_output(TicketGenerationResult)
-    
-    prompt = f"Based on the following specification, generate a comprehensive set of implementation tickets.\n\nSpec:\n{spec}"
-    
-    result = await structured_llm.ainvoke(prompt)
-    
-    # Prepare tickets for DB
-    new_tickets = []
-    for t in result.tickets:
-        new_tickets.append({
-            "id": str(uuid.uuid4()),
-            "title": t.title,
-            "description": t.description,
-            "acceptance_criteria": t.acceptance_criteria,
-            "status": "Pending",
-            "blocking": [],
-            "blocked_by": []
-        })
-        
-    # Save to DB
-    await project_store.save_generated_tickets(str(project_id), new_tickets)
-    
-    # Publish SSE
-    sse_manager = await SSEManager.get_instance()
-    await sse_manager.publish(str(project_id), "tickets_generated", {"tickets": new_tickets})
-    
-    return TicketListResponse(tickets=new_tickets)
+    tickets = await generate_tickets_from_spec(str(project_id), spec)
+    return TicketListResponse(tickets=tickets)
 
 class TicketRevisionRequest(BaseModel):
     instruction: str
@@ -271,7 +237,7 @@ Preserve the exact 'id' for any existing tickets you modify.
 
     await project_store.overwrite_ticket_history(str(project_id), tickets)
 
-    sse_manager = await SSEManager.get_instance()
-    await sse_manager.publish(str(project_id), "tickets_generated", {"tickets": tickets})
-    
+    from backend.api.sse import publish_event
+    await publish_event(str(project_id), "tickets_generated", {"tickets": tickets})
+
     return TicketListResponse(tickets=tickets)

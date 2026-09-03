@@ -9,6 +9,9 @@ import { apiClient } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import CostIndicator from '@/components/CostIndicator';
+import DevViewPanel from '@/components/DevViewPanel';
+import ModelSelector from '@/components/ModelSelector';
 
 interface ChatInterfaceProps {
   projectId: string;
@@ -20,10 +23,14 @@ export default function ChatInterface({ projectId }: ChatInterfaceProps) {
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showDevView, setShowDevView] = useState(false);
+  const [agentMode, setAgentMode] = useState<'local' | 'remote'>('remote');
   const [activeMode, setActiveMode] = useState<'brainstorm' | 'spec_review' | 'direct_implementation' | null>(null);
   const [specPreview, setSpecPreview] = useState<string | null>(null);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [jiraConfigured, setJiraConfigured] = useState(false);
+  // Story 6.2: seed the Total row from the persisted cost_ledger on mount.
+  const [initialTotalTokens, setInitialTotalTokens] = useState<number>(0);
+  const [initialTotalCostUsd, setInitialTotalCostUsd] = useState<number>(0);
 
   const [messages, setMessages] = useState<{ id: string; role: 'user' | 'agent'; content: string }[]>([]);
 
@@ -32,12 +39,42 @@ export default function ChatInterface({ projectId }: ChatInterfaceProps) {
       try {
         const project = await apiClient.getProject(projectId);
         setJiraConfigured(!!project.jira_configured);
+        const ledger = project.cost_ledger ?? {};
+        setInitialTotalTokens(ledger.total_tokens ?? 0);
+        setInitialTotalCostUsd(ledger.total_cost_usd ?? 0);
+        // Story 5.4: hydrate persisted chat history before SSE starts so the
+        // empty-state welcome does not flash on a project with prior messages.
+        if (project.chat_history && project.chat_history.length > 0) {
+          setMessages(
+            project.chat_history.map((m) => ({
+              id: m.id,
+              role: m.role === 'agent' ? 'agent' : 'user',
+              content: m.content,
+            })),
+          );
+        }
       } catch (err) {
         console.error('Failed to load project details:', err);
       }
     }
     loadProject();
   }, [projectId]);
+
+  // Story 6.3 AC-9: gate the Dev View toggle on server-reported agent mode.
+  useEffect(() => {
+    let cancelled = false;
+    apiClient
+      .getConfig()
+      .then((cfg) => {
+        if (!cancelled) setAgentMode(cfg.agent_mode);
+      })
+      .catch(() => {
+        /* default remains "remote" */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -84,20 +121,22 @@ export default function ChatInterface({ projectId }: ChatInterfaceProps) {
     return null;
   };
 
-  const handleSend = async (e?: React.FormEvent) => {
+  const handleSend = async (e?: React.FormEvent, override?: string) => {
     if (e) e.preventDefault();
-    if (!inputValue.trim()) return;
+    const source = override ?? inputValue;
+    if (!source.trim()) return;
 
-    const userMessage = inputValue.trim();
-    setInputValue('');
+    const userMessage = source.trim();
+    if (override === undefined) setInputValue('');
     setIsSending(true);
+    setAwaitingReply(true);
     setActiveMode(detectModeFromInput(userMessage));
     setSpecPreview(null);
 
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', content: userMessage }]);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8050';
       const response = await fetch(`${apiUrl}/projects/${projectId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -114,13 +153,102 @@ export default function ChatInterface({ projectId }: ChatInterfaceProps) {
         } catch { /* ignore */ }
         throw new Error(errorDetail);
       }
+
+      // Render the agent ACK inline (only when the backend sends a non-empty
+      // one — streaming modes return message:"" and deliver via SSE instead).
+      try {
+        const ack = await response.json() as { message?: string; mode?: string };
+        if (ack?.message) {
+          setMessages(prev => [
+            ...prev,
+            { id: `ack-${Date.now()}`, role: 'agent', content: ack.message! },
+          ]);
+          // Non-streaming reply (e.g. direct_implementation ack) — clear the
+          // "agent is thinking" bubble immediately, no SSE stream will come.
+          setAwaitingReply(false);
+        }
+      } catch { /* non-JSON body — ignore */ }
     } catch (err) {
       console.error(err);
       setMessages(prev => [...prev, { id: Date.now().toString(), role: 'agent', content: `❌ Error: ${err instanceof Error ? err.message : 'Failed to send'}` }]);
+      setAwaitingReply(false);
     } finally {
       setIsSending(false);
     }
   };
+
+  // Wire streaming chat events into a live-updating agent bubble.
+  // chat_start → create empty streaming message; chat_chunk → append delta;
+  // chat_done / chat_error → finalize.
+  const streamingMsgIdRef = useRef<string | null>(null);
+  const lastHandledEventIdxRef = useRef<number>(0);
+  const [awaitingReply, setAwaitingReply] = useState(false);
+
+  useEffect(() => {
+    for (let i = lastHandledEventIdxRef.current; i < events.length; i++) {
+      const ev = events[i];
+      if (ev.type === 'chat_start') {
+        const id = `stream-${Date.now()}-${i}`;
+        streamingMsgIdRef.current = id;
+        setMessages(prev => [...prev, { id, role: 'agent', content: '' }]);
+        setAwaitingReply(false);
+      } else if (ev.type === 'chat_chunk') {
+        const delta = (ev.data as { delta?: string })?.delta ?? '';
+        let id = streamingMsgIdRef.current;
+        if (!id) {
+          // Post-tool text: create a fresh bubble so it renders below the tool badges.
+          id = `stream-${Date.now()}-${i}`;
+          streamingMsgIdRef.current = id;
+          setMessages(prev => [...prev, { id: id!, role: 'agent', content: '' }]);
+        }
+        setMessages(prev => prev.map(m => m.id === id ? { ...m, content: m.content + delta } : m));
+      } else if (ev.type === 'chat_done') {
+        const id = streamingMsgIdRef.current;
+        const full = (ev.data as { content?: string })?.content ?? '';
+        if (id && full) {
+          setMessages(prev => prev.map(m => m.id === id ? { ...m, content: full } : m));
+        }
+        streamingMsgIdRef.current = null;
+        setAwaitingReply(false);
+      } else if (ev.type === 'chat_error') {
+        const id = streamingMsgIdRef.current;
+        const err = (ev.data as { error?: string })?.error ?? 'LLM error';
+        if (id) {
+          setMessages(prev => prev.map(m => m.id === id ? { ...m, content: `❌ ${err}` } : m));
+        } else {
+          setMessages(prev => [...prev, { id: `err-${Date.now()}`, role: 'agent', content: `❌ ${err}` }]);
+        }
+        streamingMsgIdRef.current = null;
+        setAwaitingReply(false);
+      } else if (ev.type === 'tool_call') {
+        const d = ev.data as { name?: string };
+        if (d?.name) {
+          setMessages(prev => [...prev, {
+            id: `tool-${Date.now()}-${i}`,
+            role: 'agent',
+            content: `🔧 \`${d.name}()\` en cours…`,
+          }]);
+        }
+      } else if (ev.type === 'tool_result') {
+        const d = ev.data as { name?: string; result?: string };
+        if (d?.name) {
+          const ok = (d.result ?? '').startsWith('OK');
+          const icon = ok ? '✅' : '⚠️';
+          setMessages(prev => [...prev, {
+            id: `tool-res-${Date.now()}-${i}`,
+            role: 'agent',
+            content: `${icon} \`${d.name}\` → ${(d.result ?? '').slice(0, 300)}`,
+          }]);
+        }
+        // Reset streaming ref so any subsequent LLM text lands in a fresh bubble
+        // below this tool result.
+        streamingMsgIdRef.current = null;
+      }
+    }
+    lastHandledEventIdxRef.current = events.length;
+  }, [events]);
+
+  const isAgentThinking = isSending || awaitingReply;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -184,9 +312,12 @@ export default function ChatInterface({ projectId }: ChatInterfaceProps) {
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <Button variant="outline" size="sm" onClick={() => setShowDevView(!showDevView)}>
-            {showDevView ? 'Hide Dev View' : 'Show Dev View'}
-          </Button>
+          <ModelSelector />
+          {agentMode === 'local' && (
+            <Button variant="outline" size="sm" onClick={() => setShowDevView(!showDevView)}>
+              {showDevView ? 'Hide Dev View' : 'Show Dev View'}
+            </Button>
+          )}
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-success' : 'bg-destructive'}`} />
             <span className="text-sm text-muted-foreground">{isConnected ? 'Connected' : 'Disconnected'}</span>
@@ -217,27 +348,21 @@ export default function ChatInterface({ projectId }: ChatInterfaceProps) {
                     id="review-spec-btn"
                     size="sm"
                     variant="outline"
-                    onClick={() => {
-                      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'agent', content: `📄 Full spec:\n\n${specPreview}` }]);
-                    }}
+                    onClick={() => handleSend(undefined, 'review this spec')}
                   >
                     Review Spec
                   </Button>
                   <Button
                     id="generate-tickets-btn"
                     size="sm"
-                    onClick={() => {
-                      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'agent', content: '🎫 Ticket generation will be available in the next update (Story 4.1).' }]);
-                    }}
+                    onClick={() => handleSend(undefined, 'crée les tickets')}
                   >
                     Generate Tickets
                   </Button>
                   <Button
                     id="execute-directly-btn"
                     size="sm"
-                    onClick={() => {
-                      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'agent', content: '⚡ Direct execution will begin shortly.' }]);
-                    }}
+                    onClick={() => handleSend(undefined, 'implémente le projet')}
                   >
                     Execute Directly
                   </Button>
@@ -264,6 +389,20 @@ export default function ChatInterface({ projectId }: ChatInterfaceProps) {
                     </div>
                   </div>
                 ))}
+                {isAgentThinking && (
+                  <div className="flex justify-start" aria-live="polite">
+                    <div className="max-w-[80%] rounded-lg p-4 bg-muted text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </span>
+                        <span className="text-sm italic">Agent is thinking…</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div ref={messagesEndRef} />
               </div>
             )}
@@ -291,33 +430,16 @@ export default function ChatInterface({ projectId }: ChatInterfaceProps) {
           </div>
         </div>
 
-        {/* Dev View Panel */}
-        {showDevView && (
-          <div className="w-[40%] flex flex-col bg-sidebar/50 h-full overflow-hidden">
-            <div className="p-3 border-b border-border bg-log-surface text-muted-foreground text-xs uppercase tracking-wider font-mono">
-              Dev View (File Tree)
-            </div>
-            <div className="flex-1 p-4 font-mono text-[13px] text-muted-foreground overflow-y-auto">
-              {/* Placeholder for Dev View file tree */}
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-success"></div>
-                <span>frontend/app/page.tsx</span>
-              </div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-agent-active"></div>
-                <span>frontend/components/Sidebar.tsx</span>
-              </div>
-              <p className="mt-8 italic opacity-50">Local workspace synchronization not active.</p>
-            </div>
-          </div>
-        )}
+        {/* Dev View Panel (Story 6.3 — replaces placeholder tree/viewer) */}
+        {showDevView && <DevViewPanel projectId={projectId} events={events} />}
       </div>
 
       {/* Cost Indicator Footer */}
-      <footer className="flex-shrink-0 border-t border-border bg-muted/30 px-4 py-1.5 flex justify-between items-center text-xs font-mono text-muted-foreground">
-        <div>Session: 0 tokens / $0.00</div>
-        <div>Project: 0 tokens / $0.00</div>
-      </footer>
+      <CostIndicator
+        events={events}
+        initialTotalTokens={initialTotalTokens}
+        initialTotalCostUsd={initialTotalCostUsd}
+      />
     </div>
   );
 }

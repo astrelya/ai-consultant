@@ -4,7 +4,7 @@ baseline_commit: d23c04e3a202c28cbef352651d6ba638fcc60f7c
 
 # Story 1.3: List and Resume Projects
 
-Status: review
+Status: in-progress
 
 ## Story
 
@@ -50,6 +50,14 @@ so that I can resume work on a previous project without re-configuring or re-exp
   - [x] Test `GET /projects/{id}` with existing project returns full record including agent_memory, spec, ticket_history, cost_ledger
   - [x] Test `GET /projects/{nonexistent-id}` returns 404
   - [x] Test `GET /projects/{invalid-uuid}` returns 422 (FastAPI auto-validates UUID path param)
+
+### Review Findings
+
+#### Epic 1 Review (2026-09-01)
+
+- [x] [Review][Decision] `ProjectDetail` exposes `chat_history: list` and `jira_configured: bool` beyond the Story 1.3 contract — resolved 2026-09-01: spec amended to include both fields in the `ProjectDetail` model as accepted additions from Story 5.4 and Story 4.5.
+- [ ] [Review][Patch] `ProjectDetail` will 500 without a JSONB codec — same asyncpg codec finding tracked against Story 1.1; called out here because `GET /projects/{id}` is where Pydantic v2 will actually raise on `agent_memory: dict` / `ticket_history: list` / `cost_ledger: dict`. [backend/api/routes/projects.py:53]
+- [x] [Review][Defer] `list_projects_endpoint` returns the entire table with no pagination — fine for now, add `limit`/`offset` when project count grows. [backend/api/routes/projects.py:64]
 
 ## Dev Notes
 
@@ -149,6 +157,12 @@ class ProjectDetail(BaseModel):
     spec: Optional[str]
     ticket_history: list
     cost_ledger: dict
+    # Schema amendment (2026-09-01, Epic 1 review D2):
+    # chat_history added by Story 5.4 (persistent chat); jira_configured added
+    # by Story 4.5 (Jira approval gate). Both are part of the ProjectDetail
+    # contract from Epic 1 onwards.
+    chat_history: list = []
+    jira_configured: bool = False
 
 
 @router.get("/projects", response_model=list[ProjectListItem])

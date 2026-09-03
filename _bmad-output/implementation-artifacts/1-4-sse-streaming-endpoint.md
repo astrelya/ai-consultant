@@ -4,7 +4,7 @@ baseline_commit: d23c04e3a202c28cbef352651d6ba638fcc60f7c
 
 # Story 1.4: SSE Streaming Endpoint
 
-Status: review
+Status: in-progress
 
 ## Story
 
@@ -41,6 +41,16 @@ So that real-time agent output can be pushed to the client without polling, read
   - [x] Mock `project_store.get_project` to test 404 on nonexistent project.
   - [x] Test successful connection and initial event.
   - [x] Test that calling `publish_event` puts an event in the stream.
+
+### Review Findings
+
+#### Epic 1 Review (2026-09-01)
+
+- [ ] [Review][Patch] `await SSEManager.get_instance()` is used in [backend/api/routes/projects.py](backend/api/routes/projects.py) but `get_instance` is a plain classmethod ([backend/api/sse.py:13](backend/api/sse.py#L13)); awaiting a non-awaitable raises `TypeError` the first time ticket generation runs. Drop the `await` (like [backend/api/routes/stream.py:20](backend/api/routes/stream.py#L20) does) or make `get_instance` `async`. [backend/api/routes/projects.py:184]
+- [ ] [Review][Patch] `sse_manager.publish(str(project_id), "tickets_generated", {...})` calls a method that does not exist on `SSEManager` — the module-level `publish_event(project_id, event_type, data)` is what Story 1.4 defined. Replace the two call-sites (`generate_tickets_endpoint`, `revise_ticket_endpoint`) with `await publish_event(...)`. [backend/api/routes/projects.py:185, 260]
+- [x] [Review][Defer] `SSEManager` register/unregister and event queues have no `maxsize` — slow clients or a runaway publisher can grow queues unboundedly. Not in AC, add a bound + drop-with-log when queues fill. [backend/api/sse.py:20, 36]
+- [x] [Review][Defer] `publish_event` swallows `asyncio.QueueFull` silently with no log — hard to diagnose stalled UIs. Add a `logger.warning` when we bound the queue. [backend/api/sse.py:38]
+- [x] [Review][Defer] `SSEManager.get_instance` is not concurrency-guarded — asyncio's cooperative scheduling makes it fine in practice, but two tasks first-touching between `await` points could each construct one. Defer. [backend/api/sse.py:13]
 
 ## Dev Notes
 

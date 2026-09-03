@@ -10,6 +10,7 @@ async def run_migrations(pool) -> None:
             try:
                 await conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_path TEXT;")
                 await conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();")
+                await conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS chat_history JSONB NOT NULL DEFAULT '[]';")
             except Exception as e:
                 logger.error(f"Migration failed: {e}")
                 raise

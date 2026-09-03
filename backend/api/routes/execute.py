@@ -1,5 +1,5 @@
 """
-POST /projects/{project_id}/execute route (Story 5.1).
+POST /projects/{project_id}/execute route (Story 5.1 & 5.2).
 
 Acquires the process-level execution lock before starting any ticket work and
 releases it only after all ticket statuses have been updated.  While the lock
@@ -10,7 +10,9 @@ Rules (from architecture & story dev notes):
 - AD-9: All handlers must be async def; use asyncio.Lock, not threading.Lock.
 - Lock is acquired before the first ticket begins and released after the last
   ticket's work is committed (status updated in DB + branch committed/pushed).
-- Execution body is currently stubbed for SupervisorAgent integration (Story 5.2).
+- Story 5.2: SupervisorAgent.run_tickets() is called inside the lock and
+  receives the project_id and ticket_ids so it can load state from the DB
+  and publish SSE events throughout execution.
 """
 import uuid
 from fastapi import APIRouter, HTTPException
@@ -18,6 +20,7 @@ from pydantic import BaseModel
 
 from backend import execution_lock as _el
 from backend.store import project_store
+from agents.supervisor_agent import SupervisorAgent
 
 router = APIRouter()
 
@@ -32,7 +35,7 @@ async def execute_tickets_endpoint(project_id: uuid.UUID, body: ExecuteRequest) 
     Start sequential ticket execution for the given project.
 
     Returns:
-        200 {"ok": True}  — execution started (or stub completed).
+        200 {"ok": True, "results": [...]}  — execution completed.
         404               — project not found.
         409               — another execution is already in progress.
     """
@@ -63,10 +66,16 @@ async def execute_tickets_endpoint(project_id: uuid.UUID, body: ExecuteRequest) 
         for ticket_id in body.ticket_ids:
             await project_store.update_ticket_status(str(project_id), ticket_id, "In Progress")
 
-        # --- SupervisorAgent execution stub (Story 5.2 will replace this) ---
-        # When Story 5.2 is implemented, the SupervisorAgent.run_tickets() call
-        # goes here, still inside this lock.  The lock is released only after
-        # the agent has written the test artifact, updated ticket status, and
-        # committed/pushed the branch.
+        # --- Story 5.2: SupervisorAgent execution ---------------------------
+        # SupervisorAgent loads ticket context from the project store, delegates
+        # to the appropriate developer sub-agent (AGENT_MODE), publishes SSE
+        # events, runs tests, and updates ticket status before returning.
+        # The lock is held for the full duration; it is released only after
+        # the agent has updated every ticket status.
+        supervisor = SupervisorAgent()
+        execution_result = await supervisor.run_tickets(
+            project_id=str(project_id),
+            ticket_ids=body.ticket_ids,
+        )
 
-    return {"ok": True}
+    return {"ok": True, "results": execution_result.get("results", [])}

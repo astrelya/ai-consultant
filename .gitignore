@@ -34,3 +34,11 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+
+# Web app
+node_modules/
+frontend/dist/
+backend/.env
+*.db
+*.sqlite
+*.sqlite3

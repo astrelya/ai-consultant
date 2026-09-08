@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: ai_consultant
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/ai_consultant
+      SECRETS_KEY: ${SECRETS_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      DEFAULT_CHAT_MODEL: ${DEFAULT_CHAT_MODEL:-gemini-2.5-pro}
+      DEFAULT_CODING_MODEL: ${DEFAULT_CODING_MODEL:-gemini-2.5-pro}
+      CORS_ORIGINS: "http://localhost:5173,http://localhost:8080"
+      WORKSPACE_ROOT: /workspaces
+    volumes:
+      - workspaces:/workspaces
+    depends_on:
+      - db
+    ports:
+      - "8001:8000"
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+
+volumes:
+  db_data:
+  workspaces:

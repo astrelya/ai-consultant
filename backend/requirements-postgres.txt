@@ -1,0 +1,4 @@
+# Extra dependencies for Postgres deployment (Docker Compose).
+# Not required for local SQLite dev.
+psycopg2-binary>=2.9.10
+asyncpg>=0.30.0

@@ -4,6 +4,22 @@ from langchain.agents import create_agent
 from langchain_core.tools import tool
 from git import Repo
 from tools.file_ops import read_file, write_file, list_files
+from tools.context7_mcp import load_context7_mcp_tools
+from tools.codegraph_mcp import load_codegraph_mcp_tools
+
+
+class LocalDeveloperAgent:
+    def __init__(self):
+        model_name = os.environ.get("CODING_MODEL", "gemini-3.1-pro-preview")
+        self.llm = ChatGoogleGenerativeAI(model=model_name, temperature=0)
+
+    def _build_local_tools(self, touched_files: list):
+        """
+        Builds the local file-op tools for a single agent run, bound (via closure)
+        to a `touched_files` list so we can report back exactly which files the
+        LLM actually wrote to. This replaces the old module-level @tool functions,
+        which had no way to communicate what they touched back to the caller.
+        """
 
 @tool
 def local_read_file(path: str) -> str:

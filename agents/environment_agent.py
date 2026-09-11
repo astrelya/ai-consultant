@@ -86,32 +86,58 @@ class EnvironmentAgent:
         
         try:
             if os.path.exists(target_path):
-                print(f"  [EnvironmentAgent] Directory exists. Pulling latest code for {repo_name}...")
+                print(f"  [EnvironmentAgent] Directory exists. Resetting workspace for {repo_name}...")
                 repo = Repo(target_path)
-                # Fetch first so remote refs are populated (handles local-only repos)
+
+                # Make sure the remote URL is current (in case the token rotated)
+                repo.remotes.origin.set_url(repo_url)
+
+                # Fetch so remote refs/HEAD are populated (handles local-only repos too)
                 try:
-                    repo.remotes.origin.fetch()
+                    repo.remotes.origin.fetch(prune=True)
+                except Exception as fetch_err:
+                    print(f"  [EnvironmentAgent] Fetch warning: {fetch_err}")
+
+                # Determine the TRUE default branch from the remote's HEAD symref,
+                # instead of just taking refs[0] (which is alphabetical, not authoritative).
+                default_branch = None
+                try:
+                    head_ref = repo.git.remote("show", "origin").splitlines()
+                    for line in head_ref:
+                        if "HEAD branch:" in line:
+                            default_branch = line.split(":")[-1].strip()
+                            break
                 except Exception:
                     pass
-                refs = repo.remotes.origin.refs
-                if refs:
-                    default_branch = refs[0].name.split('/')[-1]
-                else:
-                    # No remote refs available — derive from HEAD or fall back
-                    try:
-                        default_branch = repo.active_branch.name
-                    except TypeError:
-                        default_branch = "main"
-                    print(f"  [EnvironmentAgent] No remote refs found, using branch '{default_branch}'")
-                repo.git.checkout(default_branch)
-                pull_result = repo.remotes.origin.pull()
-                print(f"  [EnvironmentAgent] Pull complete on branch '{default_branch}': {[str(r) for r in pull_result]}")
+                if not default_branch:
+                    refs = repo.remotes.origin.refs
+                    if refs:
+                        default_branch = refs[0].name.split('/')[-1]
+                    else:
+                        try:
+                            default_branch = repo.active_branch.name
+                        except TypeError:
+                            default_branch = "main"
+                    print(f"  [EnvironmentAgent] Could not detect remote HEAD, using '{default_branch}'")
+
+                # Discard ANY local state (uncommitted changes, stray branches left over
+                # from a previous run, merge conflicts, detached HEAD, etc.) and land
+                # cleanly on the default branch synced to origin. This workspace is
+                # disposable/automation-only, so a hard reset is safe and far more
+                # reliable than a merge-based `pull`.
+                repo.git.checkout("-B", default_branch, f"origin/{default_branch}")
+                repo.git.reset("--hard", f"origin/{default_branch}")
+                repo.git.clean("-fdx")
+                print(f"  [EnvironmentAgent] Workspace reset to origin/{default_branch}.")
             else:
                 print(f"  [EnvironmentAgent] Cloning {full_repo} to {target_path}...")
                 Repo.clone_from(repo_url, target_path)
                 print(f"  [EnvironmentAgent] Clone successful.")
         except Exception as e:
+            stderr = getattr(e, "stderr", None)
             print(f"  [EnvironmentAgent] Git operation failed: {type(e).__name__}: {e}")
+            if stderr:
+                print(f"  [EnvironmentAgent] Git stderr: {stderr}")
             return {
                 "status": "failure",
                 "workspace_path": "",

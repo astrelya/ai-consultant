@@ -19,6 +19,11 @@ from tools.mcp_loader import MCPManager
 
 import os
 
+# How many times the Supervisor will hand a test failure back to the
+# Developer Agent for a fix-and-retest cycle before giving up.
+MAX_TEST_FIX_ATTEMPTS = int(os.environ.get("MAX_TEST_FIX_ATTEMPTS", "2"))
+
+
 class SupervisorAgent:
     def __init__(self):
         self.remote_developer = RemoteDeveloperAgent()
@@ -72,13 +77,14 @@ class SupervisorAgent:
             return "Development phase failed."
         print(f"[Supervisor] Branch: {dev_result.get('branch')} | PR: {dev_result.get('pr_url', 'none')}")
 
-        # 4. Delegate to Tester Agent for Unit Tests
+        branch_name = dev_result.get('branch')
+        code_files = dev_result.get('code_files', [])
+
+        # 4. Test, and on failure hand the result back to the Developer Agent
+        # to fix, then re-test. Repeats up to MAX_TEST_FIX_ATTEMPTS times.
         print("[Supervisor] Delegating to Tester Agent...")
-        test_result = self.tester.write_and_run_tests(
-            story_details,
-            dev_result.get('code_files', []),
-            workspace_path,
-            mode=self.mode,
+        test_result = await self._run_tests_with_fix_loop(
+            story_details, workspace_path, branch_name, code_files,
             pr_url=dev_result.get('pr_url'),
         )
         print(f"[Supervisor] Tester finished with status: {test_result.get('status')} | {test_result.get('message', '')}")
@@ -87,7 +93,7 @@ class SupervisorAgent:
         if test_result.get('status') == 'success':
             await self.ticket_manager.transition_ticket(issue_identifier, "In Review")
         else:
-            print(f"[Supervisor] Tests failed — ticket {issue_identifier} stays In Progress.")
+            print(f"[Supervisor] Tests did not pass — ticket {issue_identifier} stays In Progress.")
         
         # 5. Final synthesis and output
         return {
@@ -96,6 +102,80 @@ class SupervisorAgent:
             "development": dev_result,
             "testing": test_result
         }
+
+    async def _run_tests_with_fix_loop(
+        self,
+        story_details: dict,
+        workspace_path: str,
+        branch_name: str,
+        code_files: list,
+        pr_url: str = None,
+    ) -> dict:
+        """
+        Runs the Tester Agent (pure test execution — no fixing). On failure,
+        delegates back to whichever Developer Agent is active (local/remote)
+        with the actual failure output so it can patch the code, then
+        re-tests. Repeats up to MAX_TEST_FIX_ATTEMPTS times before giving up.
+        """
+        owner, repo = None, None
+        if self.mode != "local":
+            repo_full_name = story_details.get('repo_full_name', '')
+            owner, repo = (repo_full_name.split('/') + ['unknown'])[:2]
+
+        attempt = 0
+        test_result = {"status": "skipped", "command": None, "output": "", "message": "No test run performed."}
+
+        while True:
+            try:
+                if self.mode == "local":
+                    test_result = self.tester.run_local_tests(workspace_path)
+                else:
+                    test_result = await self.tester.run_remote_tests(owner, repo, branch_name, pr_url)
+            except Exception as e:
+                print(f"[Supervisor] Test run raised an unexpected error: {type(e).__name__}: {e}")
+                return {
+                    "status": "failure",
+                    "command": None,
+                    "output": str(e),
+                    "message": f"Test run crashed: {type(e).__name__}: {e}",
+                }
+
+            status = test_result.get("status")
+            print(f"[Supervisor] Test attempt {attempt + 1}: status={status}")
+
+            if status != "failure":
+                return test_result
+
+            if attempt >= MAX_TEST_FIX_ATTEMPTS:
+                print(f"[Supervisor] Max fix attempts ({MAX_TEST_FIX_ATTEMPTS}) reached. Giving up.")
+                return test_result
+
+            print(f"[Supervisor] Tests failed — invoking {self.mode.capitalize()} Developer Agent "
+                  f"to fix (attempt {attempt + 1}/{MAX_TEST_FIX_ATTEMPTS})...")
+
+            try:
+                if self.mode == "local":
+                    fix_result = await self.local_developer.fix_failing_tests(
+                        story_details, workspace_path, branch_name,
+                        test_result.get("command", ""), test_result.get("output", ""), code_files,
+                    )
+                else:
+                    fix_result = await self.remote_developer.fix_failing_tests(
+                        story_details, branch_name,
+                        test_result.get("command", ""), test_result.get("output", ""),
+                    )
+            except Exception as e:
+                print(f"[Supervisor] Fix attempt raised an unexpected error: {type(e).__name__}: {e}")
+                test_result = {
+                    "status": "failure",
+                    "command": test_result.get("command"),
+                    "output": test_result.get("output", ""),
+                    "message": f"Fix attempt crashed: {type(e).__name__}: {e}. Last known test output above.",
+                }
+                return test_result
+
+            code_files = fix_result.get('code_files', code_files)
+            attempt += 1
 
     def parse_pr_identifier(self, pr_url_or_number: str):
         """
@@ -201,21 +281,29 @@ class SupervisorAgent:
         print(f"[Supervisor] Developer finished with status: {dev_result.get('status')}")
         if dev_result.get("status") != "success":
             return "PR recommendations development phase failed."
-            
-        # 7. Run/write tests
+
+        code_files = dev_result.get('code_files', [])
+
+        # 7. Test, and on failure hand the result back to the Developer Agent
+        # to fix, then re-test. Repeats up to MAX_TEST_FIX_ATTEMPTS times.
         print("[Supervisor] Delegating to Tester Agent...")
-        test_result = self.tester.write_and_run_tests(story_details, dev_result.get('code_files', []), workspace_path)
-        print(f"[Supervisor] Tester finished with status: {test_result.get('status')}")
-        
-        # 8. Transition Jira ticket to In Review
-        if ticket_id:
+        pr_full_url = f"https://github.com/{owner}/{repo}/pull/{pr_number}"
+        test_result = await self._run_tests_with_fix_loop(
+            story_details, workspace_path, branch_name, code_files, pr_url=pr_full_url,
+        )
+        print(f"[Supervisor] Tester finished with status: {test_result.get('status')} | {test_result.get('message', '')}")
+
+        # 8. Transition Jira ticket to In Review only if tests actually passed
+        if ticket_id and test_result.get('status') == 'success':
             print(f"[Supervisor] Transitioning Jira ticket {ticket_id} to In Review...")
             await self.ticket_manager.transition_ticket(ticket_id, "In Review")
-            
+        elif ticket_id:
+            print(f"[Supervisor] Tests did not pass — ticket {ticket_id} stays In Progress.")
+
         # 9. Return summary
-        summary = f"PR Recommendations fix applied successfully! Strategy: {self.mode}. "
+        summary = f"PR Recommendations fix applied. Strategy: {self.mode}. "
         summary += f"Branch '{branch_name}' updated and pushed. "
-        return summary + f"Test coverage: {test_result.get('coverage', 'N/A')}."
+        return summary + f"Test status: {test_result.get('status', 'unknown')} — {test_result.get('message', '')}"
 
     async def process_chat(self, user_command: str) -> str:
         """
@@ -245,7 +333,8 @@ class SupervisorAgent:
             pr_url = result['development'].get('pr_url')
             if pr_url:
                 summary += f"PR URL: {pr_url}. "
-            return summary + f"Test coverage: {result['testing'].get('coverage', 'N/A')}."
+            testing = result.get('testing', {})
+            return summary + f"Tests: {testing.get('status', 'unknown')} — {testing.get('message', '')}"
 
         async def fix_pr(pr_url_or_number: str) -> str:
             """Triggers the PR review correction workflow. Fetches PR comments, checks out the PR branch, implements recommendations, runs tests, and pushes updates. Requires a PR URL or ID."""

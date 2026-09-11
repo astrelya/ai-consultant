@@ -2,6 +2,7 @@ import os
 import asyncio
 from dotenv import load_dotenv
 from agents.main_agent import SupervisorAgent
+from agents.jira_watcher import JiraWatcher
 import logging
 import warnings
 
@@ -26,13 +27,19 @@ async def main():
     print("You can ask me to list TODO tickets, or to implement a specific ticket.")
     print("Type 'exit' or 'quit' to close the application.\n")
     
+    watcher_task = None
     try:
         # Initialize the main supervisor agent
         supervisor = SupervisorAgent()
         
+        # Initialize and start the Jira Watcher
+        # watcher = JiraWatcher(supervisor)
+        # watcher_task = asyncio.create_task(watcher.start_watching(poll_interval=int(os.environ.get("JIRA_WATCHER_POLL_INTERVAL", 500))))
+        
         while True:
             try:
-                user_input = input("\n[You]: ")
+                # Use asyncio.to_thread for input to not block the event loop
+                user_input = await asyncio.to_thread(input, "\n[You]: ")
                 if user_input.strip().lower() in ['exit', 'quit']:
                     print("[Agent]: Goodbye!")
                     break
@@ -48,6 +55,9 @@ async def main():
                 print("\n[Agent]: Goodbye!")
                 break
     finally:
+        # if watcher_task:
+        #     watcher.stop()
+        #     watcher_task.cancel()
         await manager.close()
 
 if __name__ == "__main__":

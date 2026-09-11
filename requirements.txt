@@ -8,4 +8,4 @@ langchain-mcp-adapters
 requests
 pytest
 GitPython
-
+plyer

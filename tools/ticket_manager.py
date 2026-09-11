@@ -5,7 +5,7 @@ Interacts with GitHub or Jira via MCP to fetch User Stories/Issues.
 import os
 import json
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 from tools.mcp_loader import MCPManager
 
 class TicketManager:
@@ -71,7 +71,7 @@ class TicketManager:
         start_time = time.time()
         print(f"  [TicketManager] Agent started at {time.strftime('%H:%M:%S')}")
         
-        agent_executor = create_react_agent(self.llm, tools)
+        agent_executor = create_agent(self.llm, tools)
         result = await agent_executor.ainvoke({"messages": [("user", system_prompt)]})
         
         for msg in result.get("messages", []):
@@ -137,10 +137,7 @@ class TicketManager:
             {{"id": "repo-name#1", "title": "Setup CI/CD", "status": "To Do"}},
             {{"id": "repo-name#2", "title": "Add User Authentication", "status": "In Progress"}}
         ]
-        If you cannot find any, return:
-        [
-            {{"id": "MOCK-1", "title": "Mock Issue (GitHub Context Not Set up)", "status": "To Do"}}
-        ]
+        If you cannot find any matching tickets, return an empty JSON array: []
         """
         
         manager = await MCPManager.get_instance()
@@ -171,10 +168,7 @@ class TicketManager:
             {{"id": "PROJ-101", "title": "Setup CI/CD", "status": "To Do"}},
             {{"id": "PROJ-102", "title": "Add User Authentication", "status": "In Progress"}}
         ]
-        If you cannot find any, return:
-        [
-            {{"id": "MOCK-1", "title": "Mock Issue (Jira Context Not Set up)", "status": "To Do"}}
-        ]
+        If you cannot find any matching tickets, return an empty JSON array: []
         """
         
         manager = await MCPManager.get_instance()
@@ -185,7 +179,7 @@ class TicketManager:
         start_time = time.time()
         print(f"  [TicketManager] Agent started at {time.strftime('%H:%M:%S')}")
         
-        agent_executor = create_react_agent(self.llm, tools)
+        agent_executor = create_agent(self.llm, tools)
         result = await agent_executor.ainvoke({"messages": [("user", system_prompt)]})
         
         for msg in result.get("messages", []):

@@ -28,12 +28,17 @@ async def load_context7_mcp_tools() -> AsyncGenerator[List[BaseTool], None]:
         env={"CONTEXT7_API_KEY": api_key, "PATH": os.environ.get("PATH", "")}
     )
 
+    initialized = False
     try:
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 tools = await load_mcp_tools(session)
+                initialized = True
                 yield tools
     except Exception as e:
-        print(f"  [Context7] Failed to load tools: {e}")
-        yield []
+        if not initialized:
+            print(f"  [Context7] Failed to load tools: {e}")
+            yield []
+        else:
+            raise

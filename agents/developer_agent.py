@@ -193,3 +193,61 @@ Your task:
             "branch": branch_name,
             "message": "Used MCP to implement PR recommendations."
         }
+
+    async def fix_failing_tests(self, story_details: dict, branch_name: str, test_command: str, test_output: str) -> dict:
+        """
+        Called by the Supervisor's test/fix loop when TesterAgent (via CI polling)
+        reports a failure. Reads the failing file(s) on the existing branch and
+        pushes a fix, without creating a new branch or PR.
+        """
+        title = story_details.get('title')
+        print(f"  [RemoteDeveloperAgent] Attempting to fix failing tests via MCP for: {title}")
+
+        repo_full_name = story_details.get('repo_full_name', 'unknown')
+        owner, repo = (repo_full_name.split('/') + ['unknown'])[:2]
+
+        system_prompt = f"""You are an elite Developer Subagent working on a GitHub repository.
+
+Repository: owner='{owner}', repo='{repo}'
+You are working on the EXISTING branch '{branch_name}'. Do NOT create a new branch and do NOT open a new PR.
+
+The project's CI test suite failed with the following output (command: `{test_command}`):
+```
+{test_output[:4000]}
+```
+
+You MUST complete these steps IN ORDER using the GitHub MCP tools:
+
+STEP 1 - Read the relevant file(s) on branch '{branch_name}':
+  Call get_file_contents with owner='{owner}', repo='{repo}', branch='{branch_name}' — especially any files referenced in the error output/stack trace above.
+
+STEP 2 - Diagnose the root cause from the test output and fix the code. Do NOT modify the test files themselves unless they are clearly incorrect.
+
+STEP 3 - Push your fix:
+  Call create_or_update_file (or push_files) with owner='{owner}', repo='{repo}', branch='{branch_name}'.
+
+IMPORTANT:
+- Always use owner='{owner}' and repo='{repo}' (NOT the full path '{repo_full_name}').
+- Do NOT create a new branch. Do NOT create a new pull request.
+- Do NOT explain what you will do without calling tools.
+"""
+
+        async with load_dev_tools() as tools:
+            agent_executor = create_agent(self.llm, tools)
+            print("  [DeveloperAgent] Loaded MCP tools, executing fix attempt...")
+            result = await agent_executor.ainvoke({"messages": [("user", system_prompt)]})
+
+            content_raw = result["messages"][-1].content
+            if isinstance(content_raw, list):
+                content = "".join([item.get("text", "") if isinstance(item, dict) else str(item) for item in content_raw])
+            else:
+                content = str(content_raw)
+
+            print("  [DeveloperAgent] Fix attempt result:")
+            print(content)
+
+        return {
+            "status": "success",
+            "branch": branch_name,
+            "message": f"Fix attempt finished: {content[:100]}..."
+        }

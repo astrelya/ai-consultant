@@ -33,8 +33,8 @@ async def main():
         supervisor = SupervisorAgent()
         
         # Initialize and start the Jira Watcher
-        watcher = JiraWatcher(supervisor)
-        watcher_task = asyncio.create_task(watcher.start_watching(poll_interval=int(os.environ.get("JIRA_WATCHER_POLL_INTERVAL", 500))))
+        # watcher = JiraWatcher(supervisor)
+        # watcher_task = asyncio.create_task(watcher.start_watching(poll_interval=int(os.environ.get("JIRA_WATCHER_POLL_INTERVAL", 500))))
         
         while True:
             try:
@@ -55,9 +55,9 @@ async def main():
                 print("\n[Agent]: Goodbye!")
                 break
     finally:
-        if watcher_task:
-            watcher.stop()
-            watcher_task.cancel()
+        # if watcher_task:
+        #     watcher.stop()
+        #     watcher_task.cancel()
         await manager.close()
 
 if __name__ == "__main__":
